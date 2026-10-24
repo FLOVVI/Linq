@@ -2,11 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { api } from './api';
 import {
   Video,
-  AlertTriangle,
   CheckCircle2,
   XCircle,
   Send,
-  Cpu,
   Map,
   BarChart3,
   Plus,
@@ -17,49 +15,33 @@ import {
   Square,
   Pentagon,
   Trash2,
-  Move,
-  MessageSquare,
-  Radar,
-  Clock,
   Layers,
   Camera,
   Upload,
-  Sparkles,
-  RotateCw,
   ChevronLeft,
   ChevronRight,
-  ChevronUp,
   ChevronDown,
   ZoomIn,
   ZoomOut,
+  RotateCcw,
   Volume2,
   Lock,
   FileDown,
   FileText,
-  Sliders,
   Maximize2,
   RefreshCw,
   FlipHorizontal,
-  Play,
-  Crosshair,
   Flame,
   LayoutGrid,
-  HeartPulse,
-  GraduationCap,
   LogOut,
   Keyboard,
-  ShieldCheck,
-  Activity,
   Image as ImageIcon,
-  Copy,
-  Check,
-  HardHat,
   Compass,
   Search,
   Download,
 } from 'lucide-react';
 
-// 13 типов нарушений (полная совместимость с ИИ-модулем и бэкендом)
+// 13 типов нарушений
 const VIOLATION_TYPES = [
   { id: 0, code: '01', enumKey: 'RUNNING', name: 'Бег по цеху / резкие перемещения', ai: true },
   { id: 1, code: '02', enumKey: 'DANGER_PROXIMITY', name: 'Опасное сближение с техникой', ai: true },
@@ -75,19 +57,6 @@ const VIOLATION_TYPES = [
   { id: 11, code: '12', enumKey: 'NO_GLOVES', name: 'Нет перчаток', ai: true },
   { id: 12, code: '13', enumKey: 'NO_GOGGLES', name: 'Нет защитных очков / щитка', ai: true },
 ];
-
-const ADVICE = {
-  NO_HELMET: 'Проверить выдачу касок и блокировку турникета СКУД',
-  NO_VEST: 'Проверить выдачу сигнальных жилетов перед сменой',
-  DANGER_ZONE: 'Активировать физическое ограждение и звуковой маяк',
-  DANGER_PROXIMITY: 'Разделить пешеходные и транспортные маршруты',
-  SMOKING_FIRE: 'Проверить датчики огня и пожарный пост',
-  PHONE_USAGE: 'Включить 5-минутный инструктаж о запрете смартфонов',
-  RUNNING: 'Нанести противоскользящую разметку проходов',
-  PERSON_FALL: 'Экстренный вызов медпункта (норматив до 30 сек)',
-  NO_GLOVES: 'Контроль выдачи СИЗ рук на складе',
-  NO_GOGGLES: 'Контроль защитных щитков у станочников',
-};
 
 function cameraSummary(cameras, events) {
   return cameras.map((cam) => {
@@ -107,91 +76,23 @@ function cameraSummary(cameras, events) {
       total: real.length,
       confirmed,
       reviewed,
-      top: top.map(([k, n]) => `[${title(k)?.code}] ${title(k)?.name} — ${n}`).join(' / '),
-      advice: top.length ? ADVICE[top[0][0]] || 'Разобрать с мастером участка' : 'В пределах нормы',
+      top: top.map(([k, n]) => `[${title(k)?.code}] ${title(k)?.name} (${n})`).join(' / '),
     };
   });
 }
 
-// Мягкий приятный двухтональный сигнал ИИ-ассистента
-function playAliceChime() {
+function playSoftBeep() {
   try {
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    const now = ctx.currentTime;
-
-    const playNote = (freq, start, duration) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(freq, start);
-      gain.gain.setValueAtTime(0.001, start);
-      gain.gain.exponentialRampToValueAtTime(0.08, start + 0.03);
-      gain.gain.exponentialRampToValueAtTime(0.001, start + duration);
-      osc.connect(gain).connect(ctx.destination);
-      osc.start(start);
-      osc.stop(start + duration);
-    };
-
-    playNote(587.33, now, 0.16);
-    playNote(880.0, now + 0.11, 0.24);
-    setTimeout(() => ctx.close(), 500);
-  } catch {}
-}
-
-// Выбор приятного женского русского нейро-голоса (в стиле Алисы)
-function speakAliceVoice(text) {
-  try {
-    if (!('speechSynthesis' in window)) return;
-    window.speechSynthesis.cancel();
-    playAliceChime();
-
-    const speakNow = () => {
-      const utter = new SpeechSynthesisUtterance(text);
-      utter.lang = 'ru-RU';
-
-      const voices = window.speechSynthesis.getVoices();
-      const ruVoices = voices.filter(
-        (v) => v.lang.toLowerCase().includes('ru') || v.name.toLowerCase().includes('russian')
-      );
-
-      const preferredOrder = [
-        'svetlana',
-        'dariya',
-        'natural',
-        'google',
-        'milena',
-        'katya',
-        'irina',
-        'female',
-      ];
-
-      let chosenVoice = null;
-      for (const keyword of preferredOrder) {
-        const match = ruVoices.find((v) => v.name.toLowerCase().includes(keyword));
-        if (match) {
-          chosenVoice = match;
-          break;
-        }
-      }
-      if (!chosenVoice && ruVoices.length > 0) {
-        chosenVoice = ruVoices[0];
-      }
-
-      if (chosenVoice) {
-        utter.voice = chosenVoice;
-      }
-      utter.pitch = 1.08;
-      utter.rate = 1.04;
-      utter.volume = 0.95;
-
-      window.speechSynthesis.speak(utter);
-    };
-
-    if (window.speechSynthesis.getVoices().length === 0) {
-      window.speechSynthesis.onvoiceschanged = speakNow;
-    } else {
-      setTimeout(speakNow, 150);
-    }
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = 660;
+    gain.gain.value = 0.04;
+    osc.connect(gain).connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.2);
+    osc.onended = () => ctx.close();
   } catch {}
 }
 
@@ -203,10 +104,10 @@ const DB_USERS = [
 ];
 
 const DB_ROLES = [
-  { id: 1, name: 'Специалист по охране труда (Полный доступ к правилам и отчетам)' },
-  { id: 2, name: 'Мастер производственного участка (Реагирование на инциденты)' },
-  { id: 3, name: 'Оператор / Диспетчер ЦУП (Мониторинг и верификация потока)' },
-  { id: 7, name: 'ИТ-интегратор LinQ TPU (Настройка потоков, камер и нейросетей)' },
+  { id: 1, name: 'Специалист по охране труда' },
+  { id: 2, name: 'Мастер производственного участка' },
+  { id: 3, name: 'Оператор / Диспетчер ЦУП' },
+  { id: 7, name: 'ИТ-интегратор LinQ TPU' },
 ];
 
 function sortPolygonPoints(points) {
@@ -262,27 +163,25 @@ const HOURLY_STATS = [
   { hour: '20:00', count: 11, label: 'Ночь' },
 ];
 
-function formatCompactRulesJson(obj) {
-  const raw = JSON.stringify(obj, null, 2);
-  return raw.replace(
-    /"vector": \[\s+([\d,\s]+)\s+\]/g,
-    (_, nums) => `"vector": [${nums.replace(/\s+/g, ' ').trim()}]`
-  );
-}
+// Кнопка с умным позиционированием подсказки (align="right" предотвращает обрезание текста у правого края)
+function IconTipButton({ icon: Icon, label, active, onClick, badge, isDark, align = 'center' }) {
+  const tooltipPosClass =
+    align === 'right'
+      ? 'right-0'
+      : align === 'left'
+      ? 'left-0'
+      : 'left-1/2 -translate-x-1/2';
 
-function IconTipButton({ icon: Icon, label, active, onClick, badge, danger, isDark }) {
   return (
     <button
       type="button"
       onClick={onClick}
       className={`group relative flex items-center justify-center w-9 h-9 rounded-xl border transition-all cursor-pointer shrink-0 ${
         active
-          ? danger
-            ? 'bg-red-600 text-white border-red-500 shadow-sm'
-            : 'bg-sky-600 text-white border-sky-500 shadow-sm'
+          ? 'bg-sky-600 text-white border-sky-500 shadow-xs'
           : isDark
-          ? 'bg-slate-800/90 text-slate-300 border-slate-700 hover:border-sky-500/60 hover:text-white'
-          : 'bg-white text-slate-700 border-slate-200 hover:border-sky-500/60 hover:text-sky-600 shadow-2xs'
+          ? 'bg-slate-800/90 text-slate-300 border-slate-700 hover:border-slate-500 hover:text-white'
+          : 'bg-white text-slate-700 border-slate-200 hover:border-slate-400 hover:text-slate-900 shadow-2xs'
       }`}
     >
       <Icon size={16} />
@@ -291,7 +190,9 @@ function IconTipButton({ icon: Icon, label, active, onClick, badge, danger, isDa
           {badge}
         </span>
       )}
-      <span className="pointer-events-none absolute -bottom-8 left-1/2 -translate-x-1/2 px-2 py-1 rounded-md bg-slate-950 text-white text-[11px] font-medium whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 shadow-lg border border-slate-700">
+      <span
+        className={`pointer-events-none absolute -bottom-9 ${tooltipPosClass} px-2.5 py-1 rounded-md bg-slate-950 text-white text-[11px] font-medium whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 shadow-lg border border-slate-700`}
+      >
         {label}
       </span>
     </button>
@@ -300,7 +201,7 @@ function IconTipButton({ icon: Icon, label, active, onClick, badge, danger, isDa
 
 function LinQExactLogo({ forceDarkText = false, isDark = false }) {
   const mainColor = forceDarkText ? '#1E242B' : isDark ? '#FFFFFF' : '#1E242B';
-  const bluePixel = '#2589DF';
+  const bluePixel = '#38BDF8';
   return (
     <svg
       width="88"
@@ -322,7 +223,7 @@ function LinQExactLogo({ forceDarkText = false, isDark = false }) {
   );
 }
 
-function GostRostechnadzorReport({ cameras, events, currentUser, clusterCamerasCount, hourly }) {
+function GostRostechnadzorReport({ cameras, events, currentUser, hourly }) {
   const confirmedEvents = events.filter((e) => e.status !== 'false_alarm');
   return (
     <div
@@ -350,7 +251,7 @@ function GostRostechnadzorReport({ cameras, events, currentUser, clusterCamerasC
           СВЕДЕНИЯ ОБ ОРГАНИЗАЦИИ ПРОИЗВОДСТВЕННОГО КОНТРОЛЯ ЗА СОБЛЮДЕНИЕМ ТРЕБОВАНИЙ ПРОМЫШЛЕННОЙ БЕЗОПАСНОСТИ
         </h1>
         <p className="text-[10pt] mt-1">
-          по данным автоматизированного аппаратно-программного комплекса видеоаналитики «LinQ Vision Guard» на базе отечественных ускорителей LinQ TPU
+          по данным автоматизированного аппаратно-программного комплекса видеоаналитики «LinQ Vision Guard» на базе ускорителей LinQ TPU
         </p>
       </div>
 
@@ -369,15 +270,9 @@ function GostRostechnadzorReport({ cameras, events, currentUser, clusterCamerasC
               <td className="border border-black p-1.5">{currentUser.full_name} ({currentUser.position})</td>
             </tr>
             <tr>
-              <td className="border border-black p-1.5 font-bold">Применяемые технические средства контроля в реальном времени</td>
-              <td className="border border-black p-1.5">
-                Кластер российских ИИ-ускорителей LinQ TPU ({Math.ceil(clusterCamerasCount / 16)} вычислительных узла INT8, пропускная способность {clusterCamerasCount * 25} кадров/с, среднее время отклика 11.2 мс)
-              </td>
-            </tr>
-            <tr>
               <td className="border border-black p-1.5 font-bold">Количество контролируемых участков / видеопотоков</td>
               <td className="border border-black p-1.5">
-                Участков ОПО: {cameras.length} шт. | Активных потоков в отчете: {cameras.length} (расчет масштабирования: {clusterCamerasCount} камер)
+                Активных видеопотоков: {cameras.length} шт.
               </td>
             </tr>
           </tbody>
@@ -386,16 +281,16 @@ function GostRostechnadzorReport({ cameras, events, currentUser, clusterCamerasC
 
       <div className="mb-4 break-inside-avoid">
         <h2 className="text-[11pt] font-bold uppercase mb-1.5">
-          2. Состояние оснащенности опасных производственных участков средствами видеоаналитики
+          2. Состояние оснащенности производственных участков средствами видеоаналитики
         </h2>
         <table className="w-full border-collapse border border-black text-[9.5pt]">
           <thead>
             <tr className="bg-slate-100 font-bold text-center">
               <th className="border border-black p-1.5">Код узла</th>
-              <th className="border border-black p-1.5">Наименование производственного участка (ОПО)</th>
+              <th className="border border-black p-1.5">Наименование производственного участка</th>
               <th className="border border-black p-1.5">Тип камеры</th>
               <th className="border border-black p-1.5">Вектор правил контроля</th>
-              <th className="border border-black p-1.5">Выделенные зоны контроля и режим</th>
+              <th className="border border-black p-1.5">Выделенные зоны контроля</th>
               <th className="border border-black p-1.5">Статус LinQ TPU</th>
             </tr>
           </thead>
@@ -416,7 +311,7 @@ function GostRostechnadzorReport({ cameras, events, currentUser, clusterCamerasC
                     : 'Общий периметр кадра (24/7)'}
                 </td>
                 <td className="border border-black p-1.5 text-center">
-                  {cam.ai?.online ? `Исправен (${cam.fps} FPS)` : `Активен (${cam.fps} FPS)`}
+                  Активен ({cam.fps} FPS)
                 </td>
               </tr>
             ))}
@@ -426,7 +321,7 @@ function GostRostechnadzorReport({ cameras, events, currentUser, clusterCamerasC
 
       <div className="mb-4 break-inside-avoid">
         <h2 className="text-[11pt] font-bold uppercase mb-1.5">
-          3. Ведомость выявленных нарушений требований промышленной безопасности и принятых мер
+          3. Ведомость выявленных нарушений требований промышленной безопасности
         </h2>
         <table className="w-full border-collapse border border-black text-[9.5pt]">
           <thead>
@@ -434,9 +329,9 @@ function GostRostechnadzorReport({ cameras, events, currentUser, clusterCamerasC
               <th className="border border-black p-1.5">№ акта (ID)</th>
               <th className="border border-black p-1.5">Время фиксации</th>
               <th className="border border-black p-1.5">Участок / Камера</th>
-              <th className="border border-black p-1.5">Выявленный опасный паттерн</th>
+              <th className="border border-black p-1.5">Выявленный паттерн</th>
               <th className="border border-black p-1.5">Достоверность ИИ</th>
-              <th className="border border-black p-1.5">Сведения о принятых мерах и ответственном лице</th>
+              <th className="border border-black p-1.5">Примечание и ответственный</th>
             </tr>
           </thead>
           <tbody>
@@ -462,7 +357,7 @@ function GostRostechnadzorReport({ cameras, events, currentUser, clusterCamerasC
 
       <div className="mb-6 break-inside-avoid">
         <h2 className="text-[11pt] font-bold uppercase mb-1.5">
-          4. Анализ распределения инцидентов по часам рабочей смены и профилактические мероприятия
+          4. Анализ распределения инцидентов по часам рабочей смены
         </h2>
         <table className="w-full border-collapse border border-black text-[9.5pt] text-center">
           <thead>
@@ -497,6 +392,212 @@ function GostRostechnadzorReport({ cameras, events, currentUser, clusterCamerasC
           <p className="font-bold">Представитель ИТ-службы эксплуатации LinQ TPU:</p>
           <p className="mt-4">___________________ / Дехтерюк Д.К. /</p>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// Интерактивная карта цеха: без рамок участков, с перемещением правой кнопкой мыши (ПКМ) и переходом к камере по двойному клику
+function UnifiedWorkshopMap({
+  cameras,
+  selectedCamId,
+  onSelectCam,
+  onDoubleClickCam,
+  onDragCamStart,
+  events,
+  activeEvent,
+  onSelectEvent,
+  showHeatmap,
+  floorplanBgUrl,
+  mapZoom = 1,
+  mapPan = { x: 0, y: 0 },
+  isPanningMap = false,
+  onMapMouseDown,
+  onWheelZoom,
+  mapInnerRef,
+  onMouseMove,
+  onMouseUp,
+  minHeightClass = 'min-h-[540px]',
+}) {
+  return (
+    <div
+      onContextMenu={(e) => e.preventDefault()}
+      onMouseDown={onMapMouseDown}
+      onWheel={onWheelZoom}
+      onMouseMove={onMouseMove}
+      onMouseUp={onMouseUp}
+      onMouseLeave={onMouseUp}
+      className={`relative bg-[#0B1120] rounded-2xl flex-1 ${minHeightClass} select-none overflow-hidden ${
+        isPanningMap ? 'cursor-grabbing' : 'cursor-default'
+      }`}
+    >
+      {/* Масштабируемый и перемещаемый (ПКМ) слой карты цеха */}
+      <div
+        ref={mapInnerRef}
+        style={{
+          transform: `translate(${mapPan.x}px, ${mapPan.y}px) scale(${mapZoom})`,
+          transformOrigin: 'center center',
+        }}
+        className={`absolute inset-0 w-full h-full ${
+          isPanningMap ? '' : 'transition-transform duration-150 ease-out'
+        }`}
+      >
+        {floorplanBgUrl && (
+          <img
+            src={floorplanBgUrl}
+            alt="Чертеж цеха"
+            className="absolute inset-0 w-full h-full object-cover opacity-55 pointer-events-none"
+          />
+        )}
+
+        {/* Бесконечная координатная сетка без ограничивающих рамок */}
+        <div
+          className="absolute -inset-[200%] w-[500%] h-[500%] opacity-15 pointer-events-none"
+          style={{
+            backgroundImage:
+              'linear-gradient(to right, #64748b 1px, transparent 1px), linear-gradient(to bottom, #64748b 1px, transparent 1px)',
+            backgroundSize: '36px 36px',
+          }}
+        />
+
+        {showHeatmap && (
+          <div
+            className="absolute w-64 h-64 rounded-full blur-2xl opacity-55 pointer-events-none"
+            style={{
+              left: '24%',
+              top: '28%',
+              background:
+                'radial-gradient(circle, rgba(245,158,11,0.75) 0%, rgba(56,189,248,0.35) 60%, transparent 80%)',
+            }}
+          />
+        )}
+
+        {/* ТОЧКИ ИИ-ЛОКАТОРА НА КАРТЕ ЦЕХА */}
+        {events
+          .filter((e) => e.status !== 'false_alarm' && e.ai_pos)
+          .slice(0, 8)
+          .map((ev) => {
+            const isCurrent = activeEvent && ev.id === activeEvent.id;
+            return (
+              <div
+                key={`evt-pin-${ev.id}`}
+                style={{
+                  left: `${ev.ai_pos.x}%`,
+                  top: `${ev.ai_pos.y}%`,
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSelectEvent?.(ev.id);
+                }}
+                title={`Инцидент #${ev.id}: ${ev.violation_title} (${ev.camera_code})`}
+                className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center cursor-pointer z-25"
+              >
+                {isCurrent && (
+                  <span className="w-6 h-6 rounded-full bg-amber-500/70 animate-ping absolute" />
+                )}
+                <span
+                  className={`w-3.5 h-3.5 rounded-full border-2 border-white relative z-10 transition-transform ${
+                    isCurrent ? 'bg-amber-500 scale-125 shadow-md' : 'bg-rose-500/85 hover:scale-110'
+                  }`}
+                />
+                {isCurrent && (
+                  <span className="text-[10px] font-mono bg-slate-950/90 text-amber-300 border border-amber-500/40 px-2 py-0.5 rounded-md mt-1 whitespace-nowrap shadow">
+                    #{ev.id} • {ev.camera_code} (X:{ev.ai_pos.x}%, Y:{ev.ai_pos.y}%)
+                  </span>
+                )}
+              </div>
+            );
+          })}
+
+        {/* КАМЕРЫ С ЛУЧОМ ОБЗОРА */}
+        {cameras.map((cam) => {
+          const isSelected = cam.id === selectedCamId;
+          const totalAngle = (cam.mapDirection || 0) + (cam.panAngle || 0);
+          return (
+            <div
+              key={cam.id}
+              style={{
+                left: `${cam.mapPos.x}%`,
+                top: `${cam.mapPos.y}%`,
+              }}
+              onMouseDown={(e) => {
+                if (e.button !== 0) return;
+                e.stopPropagation();
+                onSelectCam?.(cam.id);
+                onDragCamStart?.(cam.id);
+              }}
+              onDoubleClick={(e) => {
+                e.stopPropagation();
+                onDoubleClickCam?.(cam.id);
+              }}
+              title="Двойной клик — перейти к видеопотоку камеры"
+              className="group absolute -translate-x-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center cursor-grab active:cursor-grabbing z-20"
+            >
+              <svg
+                viewBox="-65 -65 130 130"
+                className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 overflow-visible"
+              >
+                <defs>
+                  <radialGradient id={`fov-grad-${cam.id}`} cx="0" cy="0" r="62" gradientUnits="userSpaceOnUse">
+                    <stop
+                      offset="0%"
+                      stopColor={isSelected ? '#38bdf8' : '#94a3b8'}
+                      stopOpacity={isSelected ? '0.45' : '0.25'}
+                    />
+                    <stop
+                      offset="100%"
+                      stopColor={isSelected ? '#0284c7' : '#64748b'}
+                      stopOpacity="0.0"
+                    />
+                  </radialGradient>
+                </defs>
+                <g transform={`rotate(${totalAngle})`}>
+                  <path
+                    d="M 0 0 L -28 -56 A 62 62 0 0 1 28 -56 Z"
+                    fill={`url(#fov-grad-${cam.id})`}
+                    stroke={isSelected ? 'rgba(56, 189, 248, 0.5)' : 'rgba(148, 163, 184, 0.2)'}
+                    strokeWidth="1"
+                  />
+                  <line
+                    x1="0"
+                    y1="0"
+                    x2="0"
+                    y2="-54"
+                    stroke={isSelected ? '#38bdf8' : '#94a3b8'}
+                    strokeWidth="1"
+                    strokeDasharray="3 3"
+                    opacity="0.6"
+                  />
+                </g>
+              </svg>
+
+              <div
+                className={`relative z-10 w-8 h-8 rounded-full flex items-center justify-center border-2 transition-transform ${
+                  isSelected
+                    ? 'bg-sky-600 text-white border-white shadow-lg scale-110'
+                    : 'bg-slate-900 text-sky-400 border-sky-400/70 hover:scale-110'
+                }`}
+              >
+                <Video size={13} />
+                <span
+                  className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-slate-950 ${
+                    cam.cameraType === 'dynamic' ? 'bg-amber-400' : 'bg-teal-400'
+                  }`}
+                />
+              </div>
+
+              <span
+                className={`absolute top-9 left-1/2 -translate-x-1/2 text-[10px] font-mono font-bold px-1.5 py-0.5 rounded whitespace-nowrap z-20 ${
+                  isSelected
+                    ? 'bg-sky-600 text-white shadow'
+                    : 'bg-slate-900/95 text-slate-300 border border-slate-700'
+                }`}
+              >
+                {cam.code}
+              </span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -572,7 +673,7 @@ const INITIAL_CAMERAS_FALLBACK = [
     tpuProgram: 'yolov8m_safety_v2_int8.tpu',
     mapPos: { x: 52, y: 68 },
     workers: [
-      { id: 'TRK-31', label: 'ID #31 • Кладовщик', x: 12, y: 42, w: 12, h: 34, ppeOk: true },
+      { id: 'TRK-31', label: 'ID #31 • Кладовщик', x: 8, y: 42, w: 12, h: 34, ppeOk: true },
     ],
     zones: [
       {
@@ -581,7 +682,7 @@ const INITIAL_CAMERAS_FALLBACK = [
         shape: 'rect',
         label: 'Работа погрузчика',
         schedule: '07:55 – 12:00',
-        rect: { x: 25, y: 38, w: 48, h: 46 },
+        rect: { x: 32, y: 38, w: 44, h: 46 },
       },
     ],
   },
@@ -624,13 +725,13 @@ const INITIAL_EVENTS_FALLBACK = [
     timestamp: '14:05:12',
     frame_url: '/archive/frames/evt_1042_crop.jpg',
     ai_map_url: '/archive/ai_maps/evt_1042_homography.png',
-    ai_pos: { x: 68, y: 62 },
+    ai_pos: { x: 28, y: 32 },
     status: 'new',
     processed_by_id: null,
     processed_by_name: 'Ожидает реакции',
     processed_at: null,
     confidence: 0.98,
-    description: 'Сотрудник без движения более 3.5 сек у линии сборки',
+    description: 'Сотрудник без движения у линии сборки',
     severity: 'critical',
   },
   {
@@ -644,7 +745,7 @@ const INITIAL_EVENTS_FALLBACK = [
     timestamp: '13:52:40',
     frame_url: '/archive/frames/evt_1041_crop.jpg',
     ai_map_url: '/archive/ai_maps/evt_1041_homography.png',
-    ai_pos: { x: 44, y: 58 },
+    ai_pos: { x: 46, y: 64 },
     status: 'sent_to_master',
     processed_by_id: 2,
     processed_by_name: 'Соколов А.В.',
@@ -664,13 +765,13 @@ const INITIAL_EVENTS_FALLBACK = [
     timestamp: '13:18:05',
     frame_url: '/archive/frames/evt_1040_crop.jpg',
     ai_map_url: '/archive/ai_maps/evt_1040_homography.png',
-    ai_pos: { x: 26, y: 64 },
+    ai_pos: { x: 34, y: 44 },
     status: 'confirmed',
     processed_by_id: 1,
     processed_by_name: 'Кузьмин М.П.',
     processed_at: '13:20:10',
     confidence: 0.92,
-    description: 'Зафиксировано в зоне особого внимания у конвейера, проведен инструктаж',
+    description: 'Зафиксировано в зоне особого внимания у конвейера',
     severity: 'warning',
   },
 ];
@@ -682,14 +783,18 @@ function Dashboard({ user: currentUser, initial, onLogout }) {
   const [showGostPreviewModal, setShowGostPreviewModal] = useState(false);
   const [inspectModalEvent, setInspectModalEvent] = useState(null);
   const [retrainStatus, setRetrainStatus] = useState(null);
-  const [briefingModalOpen, setBriefingModalOpen] = useState(false);
 
   const [showHeatmap, setShowHeatmap] = useState(false);
-  const [voiceAssistantEnabled, setVoiceAssistantEnabled] = useState(true);
-  const [emergencyDispatchedId, setEmergencyDispatchedId] = useState(null);
-  const [copiedJson, setCopiedJson] = useState(false);
 
+  const [camMenuOpen, setCamMenuOpen] = useState(false);
+  const [camSearchQuery, setCamSearchQuery] = useState('');
+
+  const [mapZoom, setMapZoom] = useState(1);
+  const [mapPan, setMapPan] = useState({ x: 0, y: 0 });
+  const [isPanningMap, setIsPanningMap] = useState(false);
+  const panStartRef = useRef(null);
   const [floorplanBgUrl, setFloorplanBgUrl] = useState(null);
+
   const [activeDbTable, setActiveDbTable] = useState('events');
   const [dbSearchQuery, setDbSearchQuery] = useState('');
 
@@ -711,11 +816,7 @@ function Dashboard({ user: currentUser, initial, onLogout }) {
   const [uploadedVideoUrl, setUploadedVideoUrl] = useState(null);
   const webcamVideoRef = useRef(null);
 
-  const [enhanceFilter, setEnhanceFilter] = useState(initial.settings?.enhanceFilter ?? false);
-  const [stabilizeZonesOnPTZ, setStabilizeZonesOnPTZ] = useState(initial.settings?.stabilizeZonesOnPTZ ?? true);
   const [sirenEnabled, setSirenEnabled] = useState(initial.settings?.sirenEnabled ?? true);
-  const [skudLockEnabled, setSkudLockEnabled] = useState(initial.settings?.skudLockEnabled ?? false);
-  const [simulateWorkersWalk, setSimulateWorkersWalk] = useState(false);
 
   const [drawMode, setDrawMode] = useState('none');
   const [newZoneType, setNewZoneType] = useState('danger');
@@ -730,28 +831,24 @@ function Dashboard({ user: currentUser, initial, onLogout }) {
   const worldSceneRef = useRef(null);
 
   const [draggingCamId, setDraggingCamId] = useState(null);
-  const mapContainerRef = useRef(null);
+  const mapInnerRef = useRef(null);
 
   const [newSiteInput, setNewSiteInput] = useState('');
   const [newCamInput, setNewCamInput] = useState('');
   const [newCamTypeInput, setNewCamTypeInput] = useState('dynamic');
   const [newRtspInput, setNewRtspInput] = useState('');
 
-  const [clusterCamerasCount, setClusterCamerasCount] = useState(24);
-
-  const [verifyProgress, setVerifyProgress] = useState(0);
-  const [isVerifying, setIsVerifying] = useState(false);
-  const verificationLockRef = useRef(false);
+  const activeCollisionKeyRef = useRef(null);
 
   const currentCamera = cameras.find((c) => c.id === selectedCamId) || cameras[0] || INITIAL_CAMERAS_FALLBACK[0];
   const activeEvent = events.find((e) => e.id === selectedEventId) || events[0] || NO_EVENT;
   const falseAlarmEvents = events.filter((e) => e.status === 'false_alarm');
+  const confirmedEventsCount = events.filter((e) => e.status === 'confirmed' || e.status === 'sent_to_master').length;
   const aiMode = videoSource === 'ai';
   const camAi = currentCamera.ai || {};
   const aiOnlineCams = cameras.filter((c) => c.ai?.online);
-  const frameAspect = camAi.frame ? `${camAi.frame[0]} / ${camAi.frame[1]}` : '16 / 9';
 
-  // Быстрые горячие клавиши 1, 2, 3
+  // Быстрые клавиши 1, 2, 3
   useEffect(() => {
     const onKeyDown = (e) => {
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target?.tagName)) return;
@@ -764,55 +861,69 @@ function Dashboard({ user: currentUser, initial, onLogout }) {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [activeEvent]);
 
-  useEffect(() => {
-    if (!currentCamera.autoPatrol || currentCamera.cameraType !== 'dynamic') return;
-    const interval = setInterval(() => {
-      setCameras((prev) =>
-        prev.map((cam) => {
-          if (cam.id !== currentCamera.id) return cam;
-          const nextAngle = cam.panAngle >= 35 ? -35 : cam.panAngle + 5;
-          return { ...cam, panAngle: nextAngle };
-        })
-      );
-    }, 900);
-    return () => clearInterval(interval);
-  }, [currentCamera.autoPatrol, currentCamera.cameraType, currentCamera.id]);
-
-  useEffect(() => {
-    if (!simulateWorkersWalk) return;
-    const interval = setInterval(() => {
-      setCameras((prev) =>
-        prev.map((cam) => {
-          if (cam.id !== currentCamera.id) return cam;
-          return {
-            ...cam,
-            workers: (cam.workers || []).map((w, idx) => {
-              const step = idx === 0 ? 3.5 : -3;
-              let nextX = w.x + step;
-              if (nextX > 78) nextX = 12;
-              if (nextX < 8) nextX = 74;
-              return { ...w, x: Math.round(nextX) };
-            }),
-          };
-        })
-      );
-    }, 700);
-    return () => clearInterval(interval);
-  }, [simulateWorkersWalk, currentCamera.id]);
-
   const collidingDangerWorker =
     aiMode && camAi.online
       ? null
       : (currentCamera.workers || []).find((w) => {
           const hitZone = checkWorkerZoneCollision(w, currentCamera.zones);
-          return (hitZone && hitZone.type === 'danger') || w.ppeOk === false;
+          return hitZone && hitZone.type === 'danger';
         });
 
   useEffect(() => {
-    if (collidingDangerWorker && !isVerifying && !verificationLockRef.current) {
-      startIncidentVerification();
+    if (!collidingDangerWorker) {
+      activeCollisionKeyRef.current = null;
+      return;
     }
-  }, [collidingDangerWorker]);
+    const collisionKey = `${currentCamera.id}-${collidingDangerWorker.id}`;
+    if (activeCollisionKeyRef.current === collisionKey) return;
+    activeCollisionKeyRef.current = collisionKey;
+
+    const vType = VIOLATION_TYPES[10];
+    if (sirenEnabled) playSoftBeep();
+
+    const posObj = {
+      x: currentCamera.mapPos.x + Math.floor(Math.random() * 10 - 5),
+      y: currentCamera.mapPos.y + Math.floor(Math.random() * 10 - 5),
+    };
+
+    api
+      .createEvent({
+        camera_id: currentCamera.id,
+        violation: vType.enumKey,
+        confidence: 0.96,
+        ai_pos: posObj,
+        description: `Пересечение опасной зоны объектом ${collidingDangerWorker.id} (${currentCamera.code})`,
+      })
+      .then((ev) => {
+        setEvents((prev) => (prev.some((e) => e.id === ev.id) ? prev : [ev, ...prev]));
+        setSelectedEventId(ev.id);
+      })
+      .catch(() => {
+        const nextId = events.length > 0 ? Math.max(...events.map((e) => e.id)) + 1 : 1001;
+        const localEvt = {
+          id: nextId,
+          camera_id: currentCamera.id,
+          camera_code: currentCamera.code,
+          site_name: currentCamera.site_name,
+          violation: vType.enumKey,
+          violation_title: vType.name,
+          pattern_code: vType.code,
+          timestamp: new Date().toLocaleTimeString(),
+          frame_url: `/archive/frames/evt_${nextId}_crop.jpg`,
+          ai_map_url: `/archive/ai_maps/evt_${nextId}_homography.png`,
+          ai_pos: posObj,
+          status: 'new',
+          processed_by_id: null,
+          processed_by_name: 'Ожидает реакции',
+          processed_at: null,
+          confidence: 0.96,
+          description: `Пересечение опасной зоны объектом ${collidingDangerWorker.id} (${currentCamera.code})`,
+          severity: 'warning',
+        };
+        setEvents((prev) => [localEvt, ...prev]);
+        setSelectedEventId(nextId);
+      });
+  }, [collidingDangerWorker, currentCamera.id]);
 
   useEffect(() => {
     let stream = null;
@@ -835,90 +946,6 @@ function Dashboard({ user: currentUser, initial, onLogout }) {
       }
     };
   }, [videoSource]);
-
-  useEffect(() => {
-    if (!isVerifying) return;
-    const timer = setInterval(() => {
-      setVerifyProgress((prev) => Math.min(100, prev + 10));
-    }, 220);
-    return () => clearInterval(timer);
-  }, [isVerifying]);
-
-  useEffect(() => {
-    if (isVerifying && verifyProgress >= 100 && !verificationLockRef.current) {
-      verificationLockRef.current = true;
-      setIsVerifying(false);
-      setVerifyProgress(0);
-
-      const noHelmetWorker = (currentCamera.workers || []).find((w) => w.ppeOk === false);
-      const enabledIndices = currentCamera.rulesVector
-        .map((v, i) => (v === 1 ? i : null))
-        .filter((v) => v !== null);
-      const chosenIdx = noHelmetWorker
-        ? 8
-        : enabledIndices.length > 0
-        ? enabledIndices[Math.floor(Math.random() * enabledIndices.length)]
-        : 1;
-      const vType = VIOLATION_TYPES[chosenIdx];
-
-      if (voiceAssistantEnabled) {
-        speakAliceVoice(
-          `Внимание, диспетчер. ${currentCamera.site_name}. Зафиксировано нарушение: ${vType.name}. Рекомендуется проверка.`
-        );
-      } else if (sirenEnabled) {
-        playAliceChime();
-      }
-
-      api
-        .createEvent({
-          camera_id: currentCamera.id,
-          violation: vType.enumKey,
-          confidence: Number((0.92 + Math.random() * 0.07).toFixed(2)),
-          ai_pos: { x: Math.floor(25 + Math.random() * 55), y: Math.floor(30 + Math.random() * 50) },
-          description: collidingDangerWorker
-            ? `Фиксация по объекту ${collidingDangerWorker.id} (${currentCamera.code})`
-            : `Автофиксация на участке (${currentCamera.code})`,
-        })
-        .then((ev) => {
-          setEvents((prev) => (prev.some((e) => e.id === ev.id) ? prev : [ev, ...prev]));
-          setSelectedEventId(ev.id);
-        })
-        .catch(() => {
-          const nextId = events.length > 0 ? Math.max(...events.map((e) => e.id)) + 1 : 1001;
-          const localEvt = {
-            id: nextId,
-            camera_id: currentCamera.id,
-            camera_code: currentCamera.code,
-            site_name: currentCamera.site_name,
-            violation: vType.enumKey,
-            violation_title: vType.name,
-            pattern_code: vType.code,
-            timestamp: new Date().toLocaleTimeString(),
-            frame_url: `/archive/frames/evt_${nextId}_crop.jpg`,
-            ai_map_url: `/archive/ai_maps/evt_${nextId}_homography.png`,
-            ai_pos: { x: Math.floor(25 + Math.random() * 55), y: Math.floor(30 + Math.random() * 50) },
-            status: 'new',
-            processed_by_id: null,
-            processed_by_name: 'Ожидает реакции',
-            processed_at: null,
-            confidence: Number((0.92 + Math.random() * 0.07).toFixed(2)),
-            description: collidingDangerWorker
-              ? `Фиксация по объекту ${collidingDangerWorker.id} (${currentCamera.code})`
-              : `Автофиксация на участке (${currentCamera.code})`,
-            severity: vType.code === '07' ? 'critical' : 'warning',
-          };
-          setEvents((prev) => [localEvt, ...prev]);
-          setSelectedEventId(nextId);
-        });
-    }
-  }, [verifyProgress, isVerifying, currentCamera, collidingDangerWorker, events, sirenEnabled, voiceAssistantEnabled]);
-
-  const startIncidentVerification = () => {
-    if (isVerifying) return;
-    verificationLockRef.current = false;
-    setVerifyProgress(10);
-    setIsVerifying(true);
-  };
 
   const getWorldCoords = (e) => {
     const targetEl = worldSceneRef.current || videoContainerRef.current;
@@ -1089,16 +1116,6 @@ function Dashboard({ user: currentUser, initial, onLogout }) {
     );
   };
 
-  const adjustCameraPan = (deltaAngle) => {
-    setCameras((prev) =>
-      prev.map((cam) =>
-        cam.id === selectedCamId
-          ? { ...cam, panAngle: Math.max(-60, Math.min(60, cam.panAngle + deltaAngle)) }
-          : cam
-      )
-    );
-  };
-
   const adjustCameraMapDirection = (newDir) => {
     setCameras((prev) =>
       prev.map((cam) =>
@@ -1107,72 +1124,56 @@ function Dashboard({ user: currentUser, initial, onLogout }) {
     );
   };
 
-  const adjustCameraTilt = (deltaTilt) => {
-    setCameras((prev) =>
-      prev.map((cam) =>
-        cam.id === selectedCamId
-          ? { ...cam, tiltAngle: Math.max(-30, Math.min(30, (cam.tiltAngle || 0) + deltaTilt)) }
-          : cam
-      )
-    );
+  const handleAdjustMapZoom = (delta) => {
+    setMapZoom((prev) => Number(Math.max(0.6, Math.min(3.0, prev + delta)).toFixed(2)));
   };
 
-  const resetCameraPTZ = () => {
-    setCameras((prev) =>
-      prev.map((cam) =>
-        cam.id === selectedCamId
-          ? { ...cam, panAngle: 0, tiltAngle: 0, zoomLevel: 1, autoPatrol: false }
-          : cam
-      )
-    );
+  const handleWheelMapZoom = (e) => {
+    if (e.ctrlKey || e.metaKey || Math.abs(e.deltaY) > 0) {
+      e.preventDefault();
+      const delta = e.deltaY < 0 ? 0.15 : -0.15;
+      handleAdjustMapZoom(delta);
+    }
   };
 
-  const adjustCameraZoom = (deltaZoom) => {
-    setCameras((prev) =>
-      prev.map((cam) =>
-        cam.id === selectedCamId
-          ? {
-              ...cam,
-              zoomLevel: Number(
-                Math.max(1, Math.min(1.8, cam.zoomLevel + deltaZoom)).toFixed(2)
-              ),
-            }
-          : cam
-      )
-    );
-  };
-
-  const toggleAutoPatrol = () => {
-    setCameras((prev) =>
-      prev.map((cam) =>
-        cam.id === selectedCamId ? { ...cam, autoPatrol: !cam.autoPatrol } : cam
-      )
-    );
-  };
-
-  const toggleFirstWorkerPPE = () => {
-    setCameras((prev) =>
-      prev.map((cam) => {
-        if (cam.id !== selectedCamId) return cam;
-        return {
-          ...cam,
-          workers: (cam.workers || []).map((w, i) =>
-            i === 0 ? { ...w, ppeOk: !w.ppeOk } : w
-          ),
-        };
-      })
-    );
+  const handleMapContainerMouseDown = (e) => {
+    if (e.button === 2) {
+      e.preventDefault();
+      setIsPanningMap(true);
+      panStartRef.current = {
+        startX: e.clientX,
+        startY: e.clientY,
+        origX: mapPan.x,
+        origY: mapPan.y,
+      };
+    }
   };
 
   const handleMapMouseMove = (e) => {
-    if (!draggingCamId || !mapContainerRef.current) return;
-    const rect = mapContainerRef.current.getBoundingClientRect();
-    const x = Math.max(5, Math.min(95, Math.round(((e.clientX - rect.left) / rect.width) * 100)));
-    const y = Math.max(8, Math.min(92, Math.round(((e.clientY - rect.top) / rect.height) * 100)));
+    if (panStartRef.current) {
+      const dx = e.clientX - panStartRef.current.startX;
+      const dy = e.clientY - panStartRef.current.startY;
+      setMapPan({
+        x: panStartRef.current.origX + dx,
+        y: panStartRef.current.origY + dy,
+      });
+      return;
+    }
+
+    if (!draggingCamId || !mapInnerRef.current) return;
+    const rect = mapInnerRef.current.getBoundingClientRect();
+    const x = Math.round(((e.clientX - rect.left) / rect.width) * 100);
+    const y = Math.round(((e.clientY - rect.top) / rect.height) * 100);
 
     setCameras((prev) =>
       prev.map((cam) => (cam.id === draggingCamId ? { ...cam, mapPos: { x, y } } : cam))
     );
+  };
+
+  const handleMapMouseUp = () => {
+    panStartRef.current = null;
+    setIsPanningMap(false);
+    setDraggingCamId(null);
   };
 
   const commentTimer = useRef(null);
@@ -1203,12 +1204,8 @@ function Dashboard({ user: currentUser, initial, onLogout }) {
             const local = Object.fromEntries(prev.map((e) => [e.id, e]));
             const maxId = prev.reduce((m, e) => Math.max(m, e.id), 0);
             const newest = fresh.find((f) => f.id > maxId);
-            if (newest) {
-              if (voiceAssistantEnabled) {
-                speakAliceVoice(`Внимание! ${newest.camera_code}. ${newest.violation_title}`);
-              } else if (sirenEnabled) {
-                playAliceChime();
-              }
+            if (newest && sirenEnabled) {
+              playSoftBeep();
             }
             const merged = fresh.map((f) => (local[f.id] ? { ...f, description: local[f.id].description } : f));
             const ids = new Set(merged.map((e) => e.id));
@@ -1218,7 +1215,7 @@ function Dashboard({ user: currentUser, initial, onLogout }) {
         .catch(() => {});
     }, 4000);
     return () => clearInterval(t);
-  }, [sirenEnabled, voiceAssistantEnabled]);
+  }, [sirenEnabled]);
 
   useEffect(() => {
     const LIVE = ['fps', 'latency', 'tpuProgram', 'ai'];
@@ -1256,17 +1253,17 @@ function Dashboard({ user: currentUser, initial, onLogout }) {
       return;
     }
     if (currentUser.canEditRules) {
-      api.putSettings({ sirenEnabled, skudLockEnabled, enhanceFilter, stabilizeZonesOnPTZ }).catch(() => {});
+      api.putSettings({ sirenEnabled }).catch(() => {});
     }
-  }, [sirenEnabled, skudLockEnabled, enhanceFilter, stabilizeZonesOnPTZ, currentUser.canEditRules]);
+  }, [sirenEnabled, currentUser.canEditRules]);
 
   const handleAddCamera = (e) => {
     e.preventDefault();
     if (!currentUser.canEditRules) return;
     if (!newSiteInput.trim() || !newCamInput.trim()) return;
     const nextNum = cameras.length + 1;
-    const offsetX = Math.min(85, 28 + ((nextNum * 15) % 52));
-    const offsetY = Math.min(85, 32 + ((nextNum * 19) % 48));
+    const offsetX = 22 + ((nextNum * 15) % 58);
+    const offsetY = 26 + ((nextNum * 19) % 52);
 
     api
       .addCamera({
@@ -1341,21 +1338,6 @@ function Dashboard({ user: currentUser, initial, onLogout }) {
       });
   };
 
-  const handleEmergencyDispatch = (ev) => {
-    setEmergencyDispatchedId(ev.id);
-    handleProcessEvent(ev.id, 'confirmed');
-    handleUpdateEventComment(ev.id, 'ЭКСТРЕННО: Вызван медпункт и остановлена линия (< 30 сек)');
-    if (voiceAssistantEnabled) {
-      speakAliceVoice(`Экстренный протокол активирован. Бригада медпункта направлена на ${ev.site_name}. Конвейерная линия остановлена.`);
-    }
-  };
-
-  const handleUpdateEventComment = (eventId, text) => {
-    setEvents((prev) => prev.map((ev) => (ev.id === eventId ? { ...ev, description: text } : ev)));
-    clearTimeout(commentTimer.current);
-    commentTimer.current = setTimeout(() => api.commentEvent(eventId, text).catch(() => {}), 600);
-  };
-
   const toggleRule = (idx) => {
     if (!currentUser.canEditRules) return;
     setCameras((prev) =>
@@ -1381,28 +1363,6 @@ function Dashboard({ user: currentUser, initial, onLogout }) {
     );
   };
 
-  const handleCopyJson = () => {
-    const jsonStr = formatCompactRulesJson({
-      site_id: currentCamera.site_id,
-      site_name: currentCamera.site_name,
-      camera: currentCamera.code,
-      camera_type: currentCamera.cameraType,
-      direction_deg: (currentCamera.mapDirection || 0) + (currentCamera.panAngle || 0),
-      vector: currentCamera.rulesVector,
-      zones: currentCamera.zones.map((z) => ({
-        label: z.label,
-        type: z.type,
-        shape: z.shape,
-        schedule: z.schedule,
-        coords: z.shape === 'rect' ? z.rect : z.points,
-      })),
-    });
-    navigator.clipboard?.writeText(jsonStr);
-    setCopiedJson(true);
-    setTimeout(() => setCopiedJson(false), 1800);
-  };
-
-  // Экспорт таблицы events в CSV для отчета
   const handleExportEventsCsv = () => {
     const headers = ['id', 'camera_code', 'site_name', 'violation', 'timestamp', 'status', 'processed_by_name', 'confidence', 'description'];
     const rows = events.map((ev) =>
@@ -1464,56 +1424,54 @@ function Dashboard({ user: currentUser, initial, onLogout }) {
     filterStatus === 'all' ? true : e.status === filterStatus
   );
 
-  // Адаптивные переменные темы (строго зависят от isDark, чтобы системная тема ОС никогда не ломала цвета!)
+  // Спокойная цветовая палитра
   const themePage = isDark
-    ? 'bg-[#0B1120] text-slate-100'
-    : 'bg-[#F4F7FA] text-slate-800';
+    ? 'bg-[#0D131F] text-slate-100'
+    : 'bg-[#F5F7FA] text-slate-800';
   const themeCard = isDark
-    ? 'bg-[#151F32] border-slate-800 text-slate-100'
+    ? 'bg-[#151E2E] border-slate-800/90 text-slate-100'
     : 'bg-white border-slate-200/90 text-slate-800 shadow-2xs';
   const themeSubCard = isDark
-    ? 'bg-[#0F172A]/85 border-slate-800 text-slate-100'
+    ? 'bg-[#0F1726] border-slate-800 text-slate-200'
     : 'bg-slate-50 border-slate-200/90 text-slate-800';
-  const themeCodeBlock = isDark
-    ? 'bg-slate-950 text-sky-300 border-slate-800'
-    : 'bg-slate-100 text-slate-800 border-slate-300';
   const themeTableHead = isDark
-    ? 'bg-slate-800/90 text-slate-200 border-b border-slate-700'
+    ? 'bg-slate-800/75 text-slate-200 border-b border-slate-700'
     : 'bg-slate-100 text-slate-700 border-b border-slate-200';
   const themeTableWrap = isDark
-    ? 'border-slate-700 divide-slate-800'
+    ? 'border-slate-800 divide-slate-800/80'
     : 'border-slate-200 divide-slate-200';
   const textMuted = isDark ? 'text-slate-400' : 'text-slate-500';
 
   const zoneColors = {
     danger: {
-      border: '#EF4444',
-      bg: 'rgba(239, 68, 68, 0.22)',
-      badge: 'bg-red-600 text-white',
+      border: '#F43F5E',
+      bg: 'rgba(244, 63, 94, 0.18)',
+      badge: 'bg-rose-600 text-white',
       name: 'Опасная зона',
     },
     attention: {
       border: '#F59E0B',
-      bg: 'rgba(245, 158, 11, 0.22)',
+      bg: 'rgba(245, 158, 11, 0.18)',
       badge: 'bg-amber-500 text-slate-950',
       name: 'Особое внимание',
     },
     blind: {
       border: '#64748B',
-      bg: 'rgba(100, 116, 139, 0.28)',
+      bg: 'rgba(100, 116, 139, 0.25)',
       badge: 'bg-slate-600 text-white',
       name: 'Слепая зона',
     },
   };
 
-  const panOffsetPercent =
-    currentCamera.cameraType === 'dynamic' && stabilizeZonesOnPTZ
-      ? -currentCamera.panAngle * 0.6
-      : 0;
-  const tiltOffsetPercent =
-    currentCamera.cameraType === 'dynamic' && stabilizeZonesOnPTZ
-      ? -(currentCamera.tiltAngle || 0) * 0.6
-      : 0;
+  const currentCamIdx = cameras.findIndex((c) => c.id === currentCamera.id);
+  const goPrevCam = () => {
+    const prevIdx = (currentCamIdx - 1 + cameras.length) % cameras.length;
+    setSelectedCamId(cameras[prevIdx].id);
+  };
+  const goNextCam = () => {
+    const nextIdx = (currentCamIdx + 1) % cameras.length;
+    setSelectedCamId(cameras[nextIdx].id);
+  };
 
   return (
     <>
@@ -1523,7 +1481,6 @@ function Dashboard({ user: currentUser, initial, onLogout }) {
           cameras={cameras}
           events={events}
           currentUser={currentUser}
-          clusterCamerasCount={clusterCamerasCount}
         />
       </div>
 
@@ -1558,63 +1515,7 @@ function Dashboard({ user: currentUser, initial, onLogout }) {
               cameras={cameras}
               events={events}
               currentUser={currentUser}
-              clusterCamerasCount={clusterCamerasCount}
             />
-          </div>
-        </div>
-      )}
-
-      {/* МОДАЛЬНОЕ ОКНО АВТО-ГЕНЕРАЦИИ ПРЕДСМЕННОГО ИНСТРУКТАЖА */}
-      {briefingModalOpen && (
-        <div className="print:hidden fixed inset-0 bg-black/75 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <div className={`max-w-xl w-full rounded-2xl border p-6 shadow-2xl ${themeCard}`}>
-            <div className="flex items-center justify-between pb-3 border-b border-inherit">
-              <div className="flex items-center gap-2">
-                <GraduationCap size={18} className="text-sky-500" />
-                <h3 className="text-sm font-bold">
-                  ИИ-Генератор целевого 5-минутного инструктажа для смены
-                </h3>
-              </div>
-              <button
-                onClick={() => setBriefingModalOpen(false)}
-                className="px-2.5 py-1 rounded-lg bg-slate-500/20 text-xs font-semibold cursor-pointer"
-              >
-                Закрыть
-              </button>
-            </div>
-
-            <div className="mt-4 space-y-3 text-xs">
-              <div className={`p-3.5 rounded-xl border ${themeSubCard}`}>
-                <p className="font-bold text-sky-500">
-                  Автоматическая сводка по обезличенным случаям за предыдущие 24 часа:
-                </p>
-                <ul className="mt-2 space-y-1.5 list-disc list-inside">
-                  <li>
-                    <strong>Пик нарушений:</strong> 08:00 – 10:00 (первые 2 часа после пересменки).
-                  </li>
-                  <li>
-                    <strong>Проблемная зона:</strong> {currentCamera.site_name} ({currentCamera.code}).
-                  </li>
-                  <li>
-                    <strong>Ключевой акцент инструктажа:</strong> контроль касок и сигнальных жилетов при входе, соблюдение дистанции 2.5 м до погрузчика и манипулятора.
-                  </li>
-                </ul>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  onClick={() => {
-                    if (voiceAssistantEnabled) {
-                      speakAliceVoice('Целевой предсменный инструктаж сформирован и отправлен на терминалы СКУД участка.');
-                    }
-                    setBriefingModalOpen(false);
-                  }}
-                  className="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-semibold cursor-pointer"
-                >
-                  Отправить на терминал СКУД и планшет мастера
-                </button>
-              </div>
-            </div>
           </div>
         </div>
       )}
@@ -1625,7 +1526,7 @@ function Dashboard({ user: currentUser, initial, onLogout }) {
           <div className={`max-w-4xl w-full rounded-2xl border p-6 shadow-2xl ${themeCard}`}>
             <div className="flex items-center justify-between pb-3 border-b border-inherit">
               <div className="flex items-center gap-2">
-                <span className="px-2.5 py-0.5 rounded bg-red-600 text-white text-xs font-bold">
+                <span className="px-2.5 py-0.5 rounded bg-slate-700 text-white text-xs font-bold">
                   Акт фиксации #{inspectModalEvent.id}
                 </span>
                 <span className="text-sm font-bold">{inspectModalEvent.violation_title}</span>
@@ -1681,8 +1582,8 @@ function Dashboard({ user: currentUser, initial, onLogout }) {
                       backgroundSize: '28px 28px',
                     }}
                   />
-                  <div className="w-28 h-36 border-2 border-red-500 bg-red-500/15 rounded relative">
-                    <span className="absolute -top-5 left-0 bg-red-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded whitespace-nowrap">
+                  <div className="w-28 h-36 border-2 border-amber-500 bg-amber-500/15 rounded relative">
+                    <span className="absolute -top-5 left-0 bg-amber-500 text-slate-950 text-[10px] font-bold px-1.5 py-0.5 rounded whitespace-nowrap">
                       {inspectModalEvent.violation} ({Math.round(inspectModalEvent.confidence * 100)}%)
                     </span>
                   </div>
@@ -1704,7 +1605,7 @@ function Dashboard({ user: currentUser, initial, onLogout }) {
                       handleProcessEvent(inspectModalEvent.id, 'confirmed');
                       setInspectModalEvent(null);
                     }}
-                    className="flex-1 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold cursor-pointer"
+                    className="flex-1 py-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-semibold cursor-pointer"
                   >
                     Подтвердить
                   </button>
@@ -1713,7 +1614,7 @@ function Dashboard({ user: currentUser, initial, onLogout }) {
                       handleProcessEvent(inspectModalEvent.id, 'false_alarm');
                       setInspectModalEvent(null);
                     }}
-                    className="flex-1 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white font-semibold cursor-pointer"
+                    className="flex-1 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-semibold cursor-pointer"
                   >
                     Ложное (В дообучение)
                   </button>
@@ -1730,7 +1631,7 @@ function Dashboard({ user: currentUser, initial, onLogout }) {
           eyeComfort ? 'sepia-[.18] saturate-[.85] contrast-[.96]' : ''
         }`}
       >
-        {/* ЕДИНАЯ ШАПКА */}
+        {/* ШАПКА НА 5 ВКЛАДОК */}
         <header
           className={`border-b px-5 py-2.5 flex flex-wrap items-center justify-between gap-4 sticky top-0 z-40 backdrop-blur-md ${themeCard}`}
         >
@@ -1743,8 +1644,8 @@ function Dashboard({ user: currentUser, initial, onLogout }) {
                 <span
                   className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${
                     aiOnlineCams.length > 0
-                      ? 'bg-emerald-500/15 text-emerald-500 border-emerald-500/30'
-                      : 'bg-sky-500/15 text-sky-500 border-sky-500/30'
+                      ? 'bg-teal-500/15 text-teal-400 border-teal-500/30'
+                      : 'bg-sky-500/15 text-sky-400 border-sky-500/30'
                   }`}
                 >
                   {aiOnlineCams.length > 0
@@ -1775,7 +1676,7 @@ function Dashboard({ user: currentUser, initial, onLogout }) {
                   className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition cursor-pointer ${
                     active
                       ? 'bg-sky-600 text-white shadow-xs'
-                      : `${themeSubCard} border hover:border-sky-500/50`
+                      : `${themeSubCard} border hover:border-slate-500`
                   }`}
                 >
                   <Icon size={15} />
@@ -1783,7 +1684,7 @@ function Dashboard({ user: currentUser, initial, onLogout }) {
                   {tab.badge && (
                     <span
                       className={`text-[10px] px-1.5 py-0.2 rounded-full ${
-                        active ? 'bg-white/20 text-white' : 'bg-slate-500/15 text-slate-500'
+                        active ? 'bg-white/20 text-white' : 'bg-slate-500/15 text-slate-400'
                       }`}
                     >
                       {tab.badge}
@@ -1795,39 +1696,13 @@ function Dashboard({ user: currentUser, initial, onLogout }) {
           </nav>
 
           <div className="flex items-center gap-2">
-            <button
-              onClick={startIncidentVerification}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-semibold transition cursor-pointer shadow-2xs"
-              title="Смоделировать нарушение с 3-секундной верификацией"
-            >
-              <AlertTriangle size={14} />
-              <span className="hidden xl:inline">
-                {isVerifying ? `${(verifyProgress * 0.03).toFixed(1)} с...` : 'Тест тревоги'}
-              </span>
-            </button>
-
-            <IconTipButton
-              icon={Volume2}
-              label={voiceAssistantEnabled ? 'Голосовой ИИ-ассистент (Алиса): ВКЛ' : 'Голосовой ИИ-ассистент: ВЫКЛ'}
-              active={voiceAssistantEnabled}
-              onClick={() => {
-                const next = !voiceAssistantEnabled;
-                setVoiceAssistantEnabled(next);
-                if (next) {
-                  speakAliceVoice(
-                    `Здравствуйте, ${currentUser.full_name.split(' ')[0]}. Голосовой ассистент промышленной безопасности LinQ готов к работе.`
-                  );
-                }
-              }}
-              isDark={isDark}
-            />
-
             <IconTipButton
               icon={Eye}
               label={eyeComfort ? 'Защита зрения: ВКЛ' : 'Защита зрения 24/7'}
               active={eyeComfort}
               onClick={() => setEyeComfort(!eyeComfort)}
               isDark={isDark}
+              align="right"
             />
 
             <IconTipButton
@@ -1836,6 +1711,7 @@ function Dashboard({ user: currentUser, initial, onLogout }) {
               active={false}
               onClick={() => setIsDark(!isDark)}
               isDark={isDark}
+              align="right"
             />
 
             <IconTipButton
@@ -1844,925 +1720,749 @@ function Dashboard({ user: currentUser, initial, onLogout }) {
               active={false}
               onClick={onLogout}
               isDark={isDark}
+              align="right"
             />
           </div>
         </header>
 
-        {isVerifying && (
-          <div className="px-5 pt-2.5">
-            <div className="bg-amber-500/15 border border-amber-500/40 rounded-xl px-4 py-2 flex items-center justify-between gap-4">
-              <div className="flex items-center gap-2 text-xs font-medium text-amber-500">
-                <Clock size={15} className="animate-spin" />
-                <span>Верификация длительности паттерна (защита от случайных одиночных кадров)...</span>
-              </div>
-              <div className="w-48 h-2 bg-slate-500/30 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-amber-500 transition-all duration-200"
-                  style={{ width: `${verifyProgress}%` }}
-                />
-              </div>
-            </div>
-          </div>
-        )}
-
         <main className="flex-1 flex flex-col p-5">
           {/* ================= ВКЛАДКА 1: ВИДЕОКОНТРОЛЬ ================= */}
           {activeTab === 'monitoring' && (
-            <div className="flex-1 flex flex-col gap-5 justify-between">
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 flex-1 items-stretch">
-                {/* ЛЕВАЯ ЧАСТЬ (8 из 12): Камера + Таймлайн смены */}
-                <div className={`lg:col-span-8 border rounded-2xl flex flex-col overflow-hidden ${themeCard}`}>
-                  <div className="p-3 border-b border-inherit flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      {cameras.map((cam) => (
-                        <button
-                          key={cam.id}
-                          onClick={() => setSelectedCamId(cam.id)}
-                          className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer flex items-center gap-1.5 ${
-                            selectedCamId === cam.id
-                              ? 'bg-sky-600 text-white border-sky-600 shadow-2xs'
-                              : `${themeSubCard} hover:border-sky-500/50`
-                          }`}
-                        >
-                          <span
-                            className={`w-2 h-2 rounded-full ${
-                              selectedCamId === cam.id ? 'bg-white' : 'bg-emerald-500'
-                            }`}
-                          />
-                          <span>{cam.code}</span>
-                        </button>
-                      ))}
-                      <span className={`text-xs font-medium ml-1 hidden sm:inline ${textMuted}`}>
-                        {currentCamera.site_name}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center gap-1.5">
-                      <IconTipButton
-                        icon={Square}
-                        label="Выделить прямоугольную зону"
-                        active={drawMode === 'rect'}
-                        onClick={() => {
-                          setTempPolygon([]);
-                          setDrawMode(drawMode === 'rect' ? 'none' : 'rect');
-                        }}
-                        isDark={isDark}
-                      />
-                      <IconTipButton
-                        icon={Pentagon}
-                        label={
-                          drawMode === 'polygon'
-                            ? `Сохранить контур (${tempPolygon.length} тчк)`
-                            : 'Нарисовать контур по точкам'
-                        }
-                        active={drawMode === 'polygon'}
-                        badge={drawMode === 'polygon' ? tempPolygon.length : 0}
-                        onClick={() => {
-                          if (drawMode === 'polygon') {
-                            finishPolygonZone();
-                          } else {
-                            setTempPolygon([]);
-                            setDrawMode('polygon');
-                          }
-                        }}
-                        isDark={isDark}
-                      />
-                      <IconTipButton
-                        icon={HardHat}
-                        label="Снять / Надеть каску у рабочего (Тест СИЗ)"
-                        active={currentCamera.workers?.[0]?.ppeOk === false}
-                        danger={true}
-                        onClick={toggleFirstWorkerPPE}
-                        isDark={isDark}
-                      />
-                      <IconTipButton
-                        icon={Flame}
-                        label="Предиктивная тепловая карта рисков (Heatmap)"
-                        active={showHeatmap}
-                        danger={true}
-                        onClick={() => setShowHeatmap(!showHeatmap)}
-                        isDark={isDark}
-                      />
-                      <IconTipButton
-                        icon={Cpu}
-                        label={aiMode ? 'Режим: Поток ИИ LinQ' : 'Включить поток ИИ LinQ'}
-                        active={aiMode}
-                        onClick={() => setVideoSource(aiMode ? 'simulation' : 'ai')}
-                        isDark={isDark}
-                      />
-                      <IconTipButton
-                        icon={Play}
-                        label="Симуляция движения рабочих в цеху"
-                        active={simulateWorkersWalk}
-                        onClick={() => {
-                          setVideoSource('simulation');
-                          setSimulateWorkersWalk(!simulateWorkersWalk);
-                        }}
-                        isDark={isDark}
-                      />
-                      <IconTipButton
-                        icon={Camera}
-                        label="Подключить живую веб-камеру"
-                        active={videoSource === 'webcam'}
-                        onClick={() =>
-                          setVideoSource(videoSource === 'webcam' ? 'simulation' : 'webcam')
-                        }
-                        isDark={isDark}
-                      />
-                      {videoSource === 'webcam' && (
-                        <IconTipButton
-                          icon={FlipHorizontal}
-                          label={webcamUnmirrored ? 'Прямой вид камеры' : 'Зеркальный вид'}
-                          active={webcamUnmirrored}
-                          onClick={() => setWebcamUnmirrored(!webcamUnmirrored)}
-                          isDark={isDark}
-                        />
-                      )}
-                      <label className="group relative flex items-center justify-center w-9 h-9 rounded-xl border cursor-pointer shrink-0 bg-slate-500/10 border-slate-500/30 hover:border-sky-500">
-                        <Upload size={16} />
-                        <input
-                          type="file"
-                          accept="video/*"
-                          onChange={handleVideoFileUpload}
-                          className="hidden"
-                        />
-                        <span className="pointer-events-none absolute -bottom-8 left-1/2 -translate-x-1/2 px-2 py-1 rounded-md bg-slate-950 text-white text-[11px] font-medium whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 shadow-lg border border-slate-700">
-                          Загрузить видеофайл (.mp4)
-                        </span>
-                      </label>
-                      <IconTipButton
-                        icon={Sparkles}
-                        label="Анти-пыль / Ночное контрастирование"
-                        active={enhanceFilter}
-                        onClick={() => setEnhanceFilter(!enhanceFilter)}
-                        isDark={isDark}
-                      />
-                    </div>
-                  </div>
-
-                  {drawMode !== 'none' && (
-                    <div className="px-4 py-2 bg-sky-500/10 border-b border-sky-500/30 flex flex-wrap items-center justify-between gap-2 text-xs">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-bold text-sky-500">
-                          Параметры новой зоны:
-                        </span>
-                        <select
-                          value={newZoneType}
-                          onChange={(e) => setNewZoneType(e.target.value)}
-                          className={`rounded-lg px-2.5 py-1 border font-medium ${themeCard}`}
-                        >
-                          <option value="danger">🔴 Опасная зона</option>
-                          <option value="attention">🟡 Особое внимание</option>
-                          <option value="blind">⚪ Слепая зона</option>
-                        </select>
-                        <input
-                          type="text"
-                          value={newZoneLabel}
-                          onChange={(e) => setNewZoneLabel(e.target.value)}
-                          placeholder="Название зоны..."
-                          className={`rounded-lg px-2.5 py-1 border w-40 ${themeCard}`}
-                        />
-                        <select
-                          value={newZoneSchedule}
-                          onChange={(e) => setNewZoneSchedule(e.target.value)}
-                          className={`rounded-lg px-2 py-1 border ${themeCard}`}
-                        >
-                          <option value="Круглосуточно">24/7 Постоянно</option>
-                          <option value="07:55 – 12:00">07:55 – 12:00</option>
-                          <option value="08:00 – 20:00">08:00 – 20:00</option>
-                        </select>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {drawMode === 'polygon' && tempPolygon.length >= 3 && (
-                          <button
-                            onClick={finishPolygonZone}
-                            className="px-3 py-1 rounded-lg bg-emerald-600 text-white font-semibold cursor-pointer"
-                          >
-                            Готово ({tempPolygon.length} тчк)
-                          </button>
-                        )}
-                        <button
-                          onClick={() => {
-                            setDrawMode('none');
-                            setTempPolygon([]);
-                          }}
-                          className="px-2.5 py-1 rounded-lg bg-slate-500/20 font-medium cursor-pointer"
-                        >
-                          Отмена
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* ВИДЕОЭКРАН */}
-                  <div
-                    ref={videoContainerRef}
-                    onMouseDown={handleVideoMouseDown}
-                    onMouseMove={handleVideoMouseMove}
-                    onMouseUp={handleVideoMouseUp}
-                    onMouseLeave={handleVideoMouseUp}
-                    style={aiMode && camAi.online ? { aspectRatio: frameAspect } : undefined}
-                    className={`relative bg-slate-950 overflow-hidden select-none flex-1 min-h-[450px] ${
-                      drawMode !== 'none' ? 'cursor-crosshair ring-2 ring-sky-500' : ''
-                    } ${enhanceFilter ? 'contrast-125 brightness-110 saturate-125' : ''}`}
-                  >
-                    <div
-                      ref={worldSceneRef}
-                      style={{
-                        transform: `scale(${currentCamera.zoomLevel}) translate(${panOffsetPercent}%, ${tiltOffsetPercent}%)`,
-                        transformOrigin: 'center center',
-                      }}
-                      className={`absolute inset-0 w-full h-full ${
-                        activeZoneAction || drawMode !== 'none'
-                          ? ''
-                          : 'transition-transform duration-300 ease-out'
-                      }`}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 lg:h-[calc(100vh-105px)] min-h-[580px] items-stretch">
+              {/* ЛЕВАЯ ЧАСТЬ (8 из 12): Убрано overflow-hidden с внешней карточки, чтобы всплывающие подсказки у правого края никогда не обрезались! */}
+              <div className={`lg:col-span-8 border rounded-2xl flex flex-col h-full min-h-0 ${themeCard}`}>
+                <div className="p-3 border-b border-inherit flex flex-wrap items-center justify-between gap-3 shrink-0">
+                  <div className="flex items-center gap-2 relative">
+                    <button
+                      type="button"
+                      onClick={goPrevCam}
+                      className={`p-2 rounded-xl border cursor-pointer ${themeSubCard} hover:border-slate-500`}
+                      title="Предыдущая камера"
                     >
-                      {aiMode && camAi.online && camAi.stream_url && (
-                        <img
-                          key={`${currentCamera.id}-${currentCamera.rtsp_url}`}
-                          src={camAi.stream_url}
-                          alt="Видеопоток ИИ"
-                          draggable={false}
-                          className="absolute inset-0 w-full h-full object-fill pointer-events-none"
-                        />
-                      )}
+                      <ChevronLeft size={15} />
+                    </button>
 
-                      {videoSource === 'webcam' && (
-                        <video
-                          ref={webcamVideoRef}
-                          autoPlay
-                          playsInline
-                          muted
-                          style={{
-                            transform: webcamUnmirrored ? 'scaleX(-1)' : 'scaleX(1)',
-                          }}
-                          className="absolute inset-0 w-full h-full object-cover"
-                        />
-                      )}
+                    {/* Выпадающее меню выбора камеры */}
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setCamMenuOpen(!camMenuOpen)}
+                        className={`px-3.5 py-2 rounded-xl text-xs font-bold border flex items-center gap-2.5 cursor-pointer ${themeSubCard} hover:border-sky-500/60`}
+                      >
+                        <span className="w-2 h-2 rounded-full bg-teal-400" />
+                        <span>{currentCamera.code}</span>
+                        <span className={`font-normal truncate max-w-[200px] ${textMuted}`}>
+                          {currentCamera.site_name}
+                        </span>
+                        <span className="px-1.5 py-0.5 rounded bg-slate-500/15 text-[10px] font-mono">
+                          {currentCamIdx + 1}/{cameras.length}
+                        </span>
+                        <ChevronDown size={14} className={textMuted} />
+                      </button>
 
-                      {videoSource === 'file' && uploadedVideoUrl && (
-                        <video
-                          src={uploadedVideoUrl}
-                          autoPlay
-                          loop
-                          muted
-                          className="absolute inset-0 w-full h-full object-cover"
-                        />
-                      )}
-
-                      <div
-                        className={`absolute -inset-[100%] w-[300%] h-[300%] pointer-events-none ${
-                          aiMode && camAi.online ? 'opacity-0' : 'opacity-15'
-                        }`}
-                        style={{
-                          backgroundImage:
-                            'linear-gradient(to right, #94a3b8 1px, transparent 1px), linear-gradient(to bottom, #94a3b8 1px, transparent 1px)',
-                          backgroundSize: '48px 48px',
-                        }}
-                      />
-
-                      {showHeatmap && (
-                        <div className="absolute inset-0 pointer-events-none z-15">
-                          <div
-                            className="absolute w-72 h-72 rounded-full blur-2xl opacity-65"
-                            style={{
-                              left: '50%',
-                              top: '30%',
-                              background:
-                                'radial-gradient(circle, rgba(239,68,68,0.85) 0%, rgba(245,158,11,0.5) 45%, transparent 75%)',
-                            }}
-                          />
-                          <div
-                            className="absolute w-56 h-56 rounded-full blur-2xl opacity-55"
-                            style={{
-                              left: '14%',
-                              top: '40%',
-                              background:
-                                'radial-gradient(circle, rgba(245,158,11,0.8) 0%, rgba(56,189,248,0.4) 55%, transparent 75%)',
-                            }}
-                          />
+                      {camMenuOpen && (
+                        <div
+                          className={`absolute left-0 top-11 w-80 rounded-2xl border p-2.5 shadow-2xl z-50 ${themeCard}`}
+                        >
+                          <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-xs mb-2 ${themeSubCard}`}>
+                            <Search size={13} className={textMuted} />
+                            <input
+                              type="text"
+                              value={camSearchQuery}
+                              onChange={(e) => setCamSearchQuery(e.target.value)}
+                              placeholder="Поиск камеры или участка..."
+                              className="bg-transparent focus:outline-none w-full"
+                            />
+                          </div>
+                          <div className="max-h-64 overflow-y-auto space-y-1">
+                            {cameras
+                              .filter((c) =>
+                                !camSearchQuery.trim()
+                                  ? true
+                                  : `${c.code} ${c.name} ${c.site_name}`
+                                      .toLowerCase()
+                                      .includes(camSearchQuery.toLowerCase())
+                              )
+                              .map((cam) => {
+                                const active = cam.id === selectedCamId;
+                                return (
+                                  <button
+                                    key={cam.id}
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedCamId(cam.id);
+                                      setCamMenuOpen(false);
+                                    }}
+                                    className={`w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between cursor-pointer transition ${
+                                      active
+                                        ? 'bg-sky-600 text-white font-bold'
+                                        : 'hover:bg-slate-500/10'
+                                    }`}
+                                  >
+                                    <div className="truncate pr-2">
+                                      <span className="font-mono font-bold mr-2">{cam.code}</span>
+                                      <span className={active ? 'text-white/90' : textMuted}>
+                                        {cam.site_name}
+                                      </span>
+                                    </div>
+                                    <span className="text-[10px] font-mono shrink-0">
+                                      {cam.fps} FPS
+                                    </span>
+                                  </button>
+                                );
+                              })}
+                          </div>
                         </div>
                       )}
+                    </div>
 
-                      {currentCamera.zones
-                        .filter((z) => z.shape === 'rect')
-                        .map((zone) => {
-                          const st = zoneColors[zone.type] || zoneColors.danger;
-                          const badgePositionClass =
-                            zone.rect.y < 9 ? '-bottom-6 left-0' : '-top-6 left-0';
+                    <button
+                      type="button"
+                      onClick={goNextCam}
+                      className={`p-2 rounded-xl border cursor-pointer ${themeSubCard} hover:border-slate-500`}
+                      title="Следующая камера"
+                    >
+                      <ChevronRight size={15} />
+                    </button>
+                  </div>
 
-                          return (
+                  {/* Панель инструментов (Подсказки выровнены по правому краю align="right", чтобы не пропадать за границей карточки!) */}
+                  <div className="flex items-center gap-1.5">
+                    <IconTipButton
+                      icon={Square}
+                      label="Выделить прямоугольную зону"
+                      active={drawMode === 'rect'}
+                      onClick={() => {
+                        setTempPolygon([]);
+                        setDrawMode(drawMode === 'rect' ? 'none' : 'rect');
+                      }}
+                      isDark={isDark}
+                    />
+                    <IconTipButton
+                      icon={Pentagon}
+                      label={
+                        drawMode === 'polygon'
+                          ? `Сохранить контур (${tempPolygon.length} тчк)`
+                          : 'Нарисовать контур по точкам'
+                      }
+                      active={drawMode === 'polygon'}
+                      badge={drawMode === 'polygon' ? tempPolygon.length : 0}
+                      onClick={() => {
+                        if (drawMode === 'polygon') {
+                          finishPolygonZone();
+                        } else {
+                          setTempPolygon([]);
+                          setDrawMode('polygon');
+                        }
+                      }}
+                      isDark={isDark}
+                    />
+                    <IconTipButton
+                      icon={Flame}
+                      label="Тепловая карта рисков"
+                      active={showHeatmap}
+                      onClick={() => setShowHeatmap(!showHeatmap)}
+                      isDark={isDark}
+                      align="right"
+                    />
+                    <IconTipButton
+                      icon={Camera}
+                      label="Веб-камера"
+                      active={videoSource === 'webcam'}
+                      onClick={() =>
+                        setVideoSource(videoSource === 'webcam' ? 'simulation' : 'webcam')
+                      }
+                      isDark={isDark}
+                      align="right"
+                    />
+                    {videoSource === 'webcam' && (
+                      <IconTipButton
+                        icon={FlipHorizontal}
+                        label={webcamUnmirrored ? 'Прямой вид камеры' : 'Зеркальный вид'}
+                        active={webcamUnmirrored}
+                        onClick={() => setWebcamUnmirrored(!webcamUnmirrored)}
+                        isDark={isDark}
+                        align="right"
+                      />
+                    )}
+                    <label
+                      className={`group relative flex items-center justify-center w-9 h-9 rounded-xl border transition-all cursor-pointer shrink-0 ${
+                        isDark
+                          ? 'bg-slate-800/90 text-slate-300 border-slate-700 hover:border-slate-500 hover:text-white'
+                          : 'bg-white text-slate-700 border-slate-200 hover:border-slate-400 hover:text-slate-900 shadow-2xs'
+                      }`}
+                    >
+                      <Upload size={16} />
+                      <input
+                        type="file"
+                        accept="video/*"
+                        onChange={handleVideoFileUpload}
+                        className="hidden"
+                      />
+                      <span className="pointer-events-none absolute -bottom-9 right-0 px-2.5 py-1 rounded-md bg-slate-950 text-white text-[11px] font-medium whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 shadow-lg border border-slate-700">
+                        Загрузить видеофайл (.mp4)
+                      </span>
+                    </label>
+                  </div>
+                </div>
+
+                {drawMode !== 'none' && (
+                  <div className="px-4 py-2 bg-sky-500/10 border-b border-sky-500/30 flex flex-wrap items-center justify-between gap-2 text-xs shrink-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-bold text-sky-400">Новая зона:</span>
+                      <select
+                        value={newZoneType}
+                        onChange={(e) => setNewZoneType(e.target.value)}
+                        className={`rounded-lg px-2.5 py-1 border font-medium ${themeCard}`}
+                      >
+                        <option value="danger">🔴 Опасная зона</option>
+                        <option value="attention">🟡 Особое внимание</option>
+                        <option value="blind">⚪ Слепая зона</option>
+                      </select>
+                      <input
+                        type="text"
+                        value={newZoneLabel}
+                        onChange={(e) => setNewZoneLabel(e.target.value)}
+                        placeholder="Название зоны..."
+                        className={`rounded-lg px-2.5 py-1 border w-40 ${themeCard}`}
+                      />
+                      <select
+                        value={newZoneSchedule}
+                        onChange={(e) => setNewZoneSchedule(e.target.value)}
+                        className={`rounded-lg px-2 py-1 border ${themeCard}`}
+                      >
+                        <option value="Круглосуточно">24/7 Постоянно</option>
+                        <option value="07:55 – 12:00">07:55 – 12:00</option>
+                        <option value="08:00 – 20:00">08:00 – 20:00</option>
+                      </select>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {drawMode === 'polygon' && tempPolygon.length >= 3 && (
+                        <button
+                          onClick={finishPolygonZone}
+                          className="px-3 py-1 rounded-lg bg-teal-600 text-white font-semibold cursor-pointer"
+                        >
+                          Готово ({tempPolygon.length} тчк)
+                        </button>
+                      )}
+                      <button
+                        onClick={() => {
+                          setDrawMode('none');
+                          setTempPolygon([]);
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-slate-500/20 font-medium cursor-pointer"
+                      >
+                        Отмена
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* ВИДЕОЭКРАН */}
+                <div
+                  ref={videoContainerRef}
+                  onMouseDown={handleVideoMouseDown}
+                  onMouseMove={handleVideoMouseMove}
+                  onMouseUp={handleVideoMouseUp}
+                  onMouseLeave={handleVideoMouseUp}
+                  className={`relative bg-[#090D16] overflow-hidden select-none flex-1 min-h-0 ${
+                    drawMode !== 'none' ? 'cursor-crosshair ring-2 ring-sky-500' : ''
+                  }`}
+                >
+                  <div ref={worldSceneRef} className="absolute inset-0 w-full h-full">
+                    {aiMode && camAi.online && camAi.stream_url && (
+                      <img
+                        key={`${currentCamera.id}-${currentCamera.rtsp_url}`}
+                        src={camAi.stream_url}
+                        alt="Видеопоток ИИ"
+                        draggable={false}
+                        className="absolute inset-0 w-full h-full object-fill pointer-events-none"
+                      />
+                    )}
+
+                    {videoSource === 'webcam' && (
+                      <video
+                        ref={webcamVideoRef}
+                        autoPlay
+                        playsInline
+                        muted
+                        style={{
+                          transform: webcamUnmirrored ? 'scaleX(-1)' : 'scaleX(1)',
+                        }}
+                        className="absolute inset-0 w-full h-full object-cover"
+                      />
+                    )}
+
+                    {videoSource === 'file' && uploadedVideoUrl && (
+                      <video
+                        src={uploadedVideoUrl}
+                        autoPlay
+                        loop
+                        muted
+                        className="absolute inset-0 w-full h-full object-cover"
+                      />
+                    )}
+
+                    <div
+                      className={`absolute -inset-[100%] w-[300%] h-[300%] pointer-events-none ${
+                        aiMode && camAi.online ? 'opacity-0' : 'opacity-15'
+                      }`}
+                      style={{
+                        backgroundImage:
+                          'linear-gradient(to right, #94a3b8 1px, transparent 1px), linear-gradient(to bottom, #94a3b8 1px, transparent 1px)',
+                        backgroundSize: '48px 48px',
+                      }}
+                    />
+
+                    {showHeatmap && (
+                      <div className="absolute inset-0 pointer-events-none z-15">
+                        <div
+                          className="absolute w-72 h-72 rounded-full blur-2xl opacity-60"
+                          style={{
+                            left: '50%',
+                            top: '30%',
+                            background:
+                              'radial-gradient(circle, rgba(244,63,94,0.75) 0%, rgba(245,158,11,0.45) 45%, transparent 75%)',
+                          }}
+                        />
+                      </div>
+                    )}
+
+                    {currentCamera.zones
+                      .filter((z) => z.shape === 'rect')
+                      .map((zone) => {
+                        const st = zoneColors[zone.type] || zoneColors.danger;
+                        const badgePositionClass =
+                          zone.rect.y < 9 ? '-bottom-6 left-0' : '-top-6 left-0';
+
+                        return (
+                          <div
+                            key={zone.id}
+                            style={{
+                              left: `${zone.rect.x}%`,
+                              top: `${zone.rect.y}%`,
+                              width: `${zone.rect.w}%`,
+                              height: `${zone.rect.h}%`,
+                              borderColor: st.border,
+                              backgroundColor: st.bg,
+                            }}
+                            onMouseDown={(e) => {
+                              if (drawMode !== 'none') return;
+                              e.stopPropagation();
+                              const coords = getWorldCoords(e);
+                              setActiveZoneAction({
+                                mode: 'move',
+                                zoneId: zone.id,
+                                startX: coords.x,
+                                startY: coords.y,
+                                initialRect: { ...zone.rect },
+                              });
+                            }}
+                            className="absolute border-2 rounded-md cursor-move group hover:ring-1 hover:ring-white/70 z-20"
+                          >
                             <div
-                              key={zone.id}
-                              style={{
-                                left: `${zone.rect.x}%`,
-                                top: `${zone.rect.y}%`,
-                                width: `${zone.rect.w}%`,
-                                height: `${zone.rect.h}%`,
-                                borderColor: st.border,
-                                backgroundColor: st.bg,
-                              }}
+                              className={`absolute ${badgePositionClass} flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-950/90 border border-white/20 shadow-md whitespace-nowrap z-30`}
+                            >
+                              <span
+                                className="w-2 h-2 rounded-full shrink-0"
+                                style={{ backgroundColor: st.border }}
+                              />
+                              <span className="text-[10px] font-semibold text-white">
+                                {zone.label}
+                              </span>
+                              <button
+                                onMouseDown={(e) => e.stopPropagation()}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  removeZone(zone.id);
+                                }}
+                                className="text-slate-300 hover:text-rose-400 ml-0.5 cursor-pointer"
+                              >
+                                <Trash2 size={10} />
+                              </button>
+                            </div>
+
+                            <div
                               onMouseDown={(e) => {
-                                if (drawMode !== 'none') return;
                                 e.stopPropagation();
                                 const coords = getWorldCoords(e);
                                 setActiveZoneAction({
-                                  mode: 'move',
+                                  mode: 'resize',
                                   zoneId: zone.id,
                                   startX: coords.x,
                                   startY: coords.y,
                                   initialRect: { ...zone.rect },
                                 });
                               }}
-                              title={`${zone.label} • Режим: ${zone.schedule || '24/7'}`}
-                              className="absolute border-2 rounded-md cursor-move group hover:ring-1 hover:ring-white/70 z-20"
-                            >
-                              <div
-                                className={`absolute ${badgePositionClass} flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-950/90 border border-white/20 shadow-md whitespace-nowrap z-30`}
-                              >
-                                <span
-                                  className="w-2 h-2 rounded-full shrink-0"
-                                  style={{ backgroundColor: st.border }}
-                                />
-                                <span className="text-[10px] font-semibold text-white">
-                                  {zone.label}
-                                </span>
-                                <button
-                                  onMouseDown={(e) => e.stopPropagation()}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    removeZone(zone.id);
-                                  }}
-                                  className="text-slate-300 hover:text-red-400 ml-0.5 cursor-pointer"
-                                >
-                                  <Trash2 size={10} />
-                                </button>
-                              </div>
+                              className="absolute -bottom-1.5 -right-1.5 w-3 h-3 bg-white border-2 border-sky-600 rounded-xs cursor-nwse-resize pointer-events-auto shadow hover:scale-125 transition-transform"
+                            />
+                          </div>
+                        );
+                      })}
 
-                              <div
-                                onMouseDown={(e) => {
-                                  e.stopPropagation();
-                                  const coords = getWorldCoords(e);
-                                  setActiveZoneAction({
-                                    mode: 'resize',
-                                    zoneId: zone.id,
-                                    startX: coords.x,
-                                    startY: coords.y,
-                                    initialRect: { ...zone.rect },
-                                  });
-                                }}
-                                className="absolute -bottom-1.5 -right-1.5 w-3 h-3 bg-white border-2 border-sky-600 rounded-xs cursor-nwse-resize pointer-events-auto shadow hover:scale-125 transition-transform"
-                              />
-                            </div>
-                          );
-                        })}
+                    {drawMode === 'rect' && dragStart && dragCurrent && (
+                      <div
+                        style={{
+                          left: `${Math.min(dragStart.x, dragCurrent.x)}%`,
+                          top: `${Math.min(dragStart.y, dragCurrent.y)}%`,
+                          width: `${Math.abs(dragCurrent.x - dragStart.x)}%`,
+                          height: `${Math.abs(dragCurrent.y - dragStart.y)}%`,
+                          borderColor: zoneColors[newZoneType].border,
+                          backgroundColor: zoneColors[newZoneType].bg,
+                        }}
+                        className="absolute border-2 border-dashed rounded-md pointer-events-none z-20"
+                      />
+                    )}
 
-                      {drawMode === 'rect' && dragStart && dragCurrent && (
-                        <div
-                          style={{
-                            left: `${Math.min(dragStart.x, dragCurrent.x)}%`,
-                            top: `${Math.min(dragStart.y, dragCurrent.y)}%`,
-                            width: `${Math.abs(dragCurrent.x - dragStart.x)}%`,
-                            height: `${Math.abs(dragCurrent.y - dragStart.y)}%`,
-                            borderColor: zoneColors[newZoneType].border,
-                            backgroundColor: zoneColors[newZoneType].bg,
-                          }}
-                          className="absolute border-2 border-dashed rounded-md pointer-events-none z-20"
-                        />
-                      )}
-
-                      <svg
-                        viewBox="0 0 100 100"
-                        preserveAspectRatio="none"
-                        className="absolute inset-0 w-full h-full overflow-visible pointer-events-none z-10"
-                      >
-                        {currentCamera.zones
-                          .filter((z) => z.shape === 'polygon' && z.points?.length >= 3)
-                          .map((zone) => {
-                            const st = zoneColors[zone.type] || zoneColors.danger;
-                            const orderedPts = sortPolygonPoints(zone.points);
-                            const ptsString = orderedPts
-                              .map((p) => `${p.x},${p.y}`)
-                              .join(' ');
-                            return (
-                              <polygon
-                                key={zone.id}
-                                points={ptsString}
-                                fill={st.bg}
-                                stroke={st.border}
-                                strokeWidth="2"
-                                vectorEffect="non-scaling-stroke"
-                              />
-                            );
-                          })}
-
-                        {tempPolygon.length >= 2 && (
-                          <polygon
-                            points={sortPolygonPoints(tempPolygon)
-                              .map((p) => `${p.x},${p.y}`)
-                              .join(' ')}
-                            fill={zoneColors[newZoneType].bg}
-                            stroke="#38bdf8"
-                            strokeWidth="2"
-                            strokeDasharray="5 4"
-                            vectorEffect="non-scaling-stroke"
-                          />
-                        )}
-                      </svg>
-
-                      {tempPolygon.map((p, i) => (
-                        <div
-                          key={i}
-                          style={{ left: `${p.x}%`, top: `${p.y}%` }}
-                          className="absolute -translate-x-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full bg-sky-400 border-2 border-slate-950 pointer-events-none z-20 shadow"
-                        />
-                      ))}
-
+                    <svg
+                      viewBox="0 0 100 100"
+                      preserveAspectRatio="none"
+                      className="absolute inset-0 w-full h-full overflow-visible pointer-events-none z-10"
+                    >
                       {currentCamera.zones
                         .filter((z) => z.shape === 'polygon' && z.points?.length >= 3)
                         .map((zone) => {
                           const st = zoneColors[zone.type] || zoneColors.danger;
-                          const topVertex = zone.points.reduce(
-                            (minPt, pt) => (pt.y < minPt.y ? pt : minPt),
-                            zone.points[0]
-                          );
-
+                          const orderedPts = sortPolygonPoints(zone.points);
+                          const ptsString = orderedPts
+                            .map((p) => `${p.x},${p.y}`)
+                            .join(' ');
                           return (
-                            <React.Fragment key={`poly-ui-${zone.id}`}>
-                              {zone.points.map((pt, idx) => (
-                                <div
-                                  key={idx}
-                                  style={{
-                                    left: `${pt.x}%`,
-                                    top: `${pt.y}%`,
-                                    borderColor: st.border,
-                                  }}
-                                  onMouseDown={(e) => {
-                                    if (drawMode !== 'none') return;
-                                    e.stopPropagation();
-                                    const coords = getWorldCoords(e);
-                                    setActiveZoneAction({
-                                      mode: 'move_vertex',
-                                      zoneId: zone.id,
-                                      vertexIdx: idx,
-                                      startX: coords.x,
-                                      startY: coords.y,
-                                    });
-                                  }}
-                                  className="absolute -translate-x-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full bg-white border-2 cursor-pointer hover:scale-125 transition-transform z-30 shadow"
-                                />
-                              ))}
+                            <polygon
+                              key={zone.id}
+                              points={ptsString}
+                              fill={st.bg}
+                              stroke={st.border}
+                              strokeWidth="2"
+                              vectorEffect="non-scaling-stroke"
+                            />
+                          );
+                        })}
 
+                      {tempPolygon.length >= 2 && (
+                        <polygon
+                          points={sortPolygonPoints(tempPolygon)
+                            .map((p) => `${p.x},${p.y}`)
+                            .join(' ')}
+                          fill={zoneColors[newZoneType].bg}
+                          stroke="#38bdf8"
+                          strokeWidth="2"
+                          strokeDasharray="5 4"
+                          vectorEffect="non-scaling-stroke"
+                        />
+                      )}
+                    </svg>
+
+                    {tempPolygon.map((p, i) => (
+                      <div
+                        key={i}
+                        style={{ left: `${p.x}%`, top: `${p.y}%` }}
+                        className="absolute -translate-x-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full bg-sky-400 border-2 border-slate-950 pointer-events-none z-20 shadow"
+                      />
+                    ))}
+
+                    {currentCamera.zones
+                      .filter((z) => z.shape === 'polygon' && z.points?.length >= 3)
+                      .map((zone) => {
+                        const st = zoneColors[zone.type] || zoneColors.danger;
+                        const topVertex = zone.points.reduce(
+                          (minPt, pt) => (pt.y < minPt.y ? pt : minPt),
+                          zone.points[0]
+                        );
+
+                        return (
+                          <React.Fragment key={`poly-ui-${zone.id}`}>
+                            {zone.points.map((pt, idx) => (
                               <div
+                                key={idx}
                                 style={{
-                                  left: `${topVertex.x}%`,
-                                  top: `${topVertex.y}%`,
+                                  left: `${pt.x}%`,
+                                  top: `${pt.y}%`,
+                                  borderColor: st.border,
                                 }}
                                 onMouseDown={(e) => {
                                   if (drawMode !== 'none') return;
                                   e.stopPropagation();
                                   const coords = getWorldCoords(e);
                                   setActiveZoneAction({
-                                    mode: 'move_poly',
+                                    mode: 'move_vertex',
                                     zoneId: zone.id,
+                                    vertexIdx: idx,
                                     startX: coords.x,
                                     startY: coords.y,
-                                    initialPoints: zone.points.map((pt) => ({ ...pt })),
                                   });
                                 }}
-                                className="absolute -translate-x-1/2 -translate-y-full -mt-1.5 flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-950/90 border border-white/25 cursor-move z-30 shadow-md whitespace-nowrap"
-                              >
-                                <span
-                                  className="w-2 h-2 rounded-full shrink-0"
-                                  style={{ backgroundColor: st.border }}
-                                />
-                                <span className="text-[10px] font-semibold text-white">
-                                  {zone.label}
-                                </span>
-                                <button
-                                  onMouseDown={(e) => e.stopPropagation()}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    removeZone(zone.id);
-                                  }}
-                                  className="text-slate-300 hover:text-red-400 ml-0.5 cursor-pointer"
-                                >
-                                  <Trash2 size={10} />
-                                </button>
-                              </div>
-                            </React.Fragment>
-                          );
-                        })}
+                                className="absolute -translate-x-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full bg-white border-2 cursor-pointer hover:scale-125 transition-transform z-30 shadow"
+                              />
+                            ))}
 
-                      {(!aiMode || !camAi.online) &&
-                        (currentCamera.workers || []).map((worker) => {
-                          const hitZone = checkWorkerZoneCollision(worker, currentCamera.zones);
-                          const isDanger = hitZone?.type === 'danger' || worker.ppeOk === false;
-                          const isAttention = hitZone?.type === 'attention';
-
-                          return (
                             <div
-                              key={worker.id}
                               style={{
-                                left: `${worker.x}%`,
-                                top: `${worker.y}%`,
-                                width: `${worker.w}%`,
-                                height: `${worker.h}%`,
+                                left: `${topVertex.x}%`,
+                                top: `${topVertex.y}%`,
                               }}
                               onMouseDown={(e) => {
                                 if (drawMode !== 'none') return;
                                 e.stopPropagation();
                                 const coords = getWorldCoords(e);
                                 setActiveZoneAction({
-                                  mode: 'move_worker',
-                                  workerId: worker.id,
+                                  mode: 'move_poly',
+                                  zoneId: zone.id,
                                   startX: coords.x,
                                   startY: coords.y,
-                                  initialX: worker.x,
-                                  initialY: worker.y,
+                                  initialPoints: zone.points.map((pt) => ({ ...pt })),
                                 });
                               }}
-                              title="Перетащите сотрудника мышкой в опасную зону для теста срабатывания"
-                              className={`absolute border-2 rounded-md cursor-grab active:cursor-grabbing z-25 transition-colors ${
+                              className="absolute -translate-x-1/2 -translate-y-full -mt-1.5 flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-950/90 border border-white/25 cursor-move z-30 shadow-md whitespace-nowrap"
+                            >
+                              <span
+                                className="w-2 h-2 rounded-full shrink-0"
+                                style={{ backgroundColor: st.border }}
+                              />
+                              <span className="text-[10px] font-semibold text-white">
+                                {zone.label}
+                              </span>
+                              <button
+                                onMouseDown={(e) => e.stopPropagation()}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  removeZone(zone.id);
+                                }}
+                                className="text-slate-300 hover:text-rose-400 ml-0.5 cursor-pointer"
+                              >
+                                <Trash2 size={10} />
+                              </button>
+                            </div>
+                          </React.Fragment>
+                        );
+                      })}
+
+                    {(!aiMode || !camAi.online) &&
+                      (currentCamera.workers || []).map((worker) => {
+                        const hitZone = checkWorkerZoneCollision(worker, currentCamera.zones);
+                        const isDanger = hitZone?.type === 'danger';
+                        const isAttention = hitZone?.type === 'attention';
+
+                        return (
+                          <div
+                            key={worker.id}
+                            style={{
+                              left: `${worker.x}%`,
+                              top: `${worker.y}%`,
+                              width: `${worker.w}%`,
+                              height: `${worker.h}%`,
+                            }}
+                            onMouseDown={(e) => {
+                              if (drawMode !== 'none') return;
+                              e.stopPropagation();
+                              const coords = getWorldCoords(e);
+                              setActiveZoneAction({
+                                mode: 'move_worker',
+                                workerId: worker.id,
+                                startX: coords.x,
+                                startY: coords.y,
+                                initialX: worker.x,
+                                initialY: worker.y,
+                              });
+                            }}
+                            className={`absolute border-2 rounded-md cursor-grab active:cursor-grabbing z-25 transition-colors ${
+                              isDanger
+                                ? 'border-rose-500 bg-rose-500/20'
+                                : isAttention
+                                ? 'border-amber-400 bg-amber-400/15'
+                                : 'border-teal-400 bg-teal-500/10'
+                            }`}
+                          >
+                            <div
+                              className={`absolute -top-5 left-0 text-white text-[10px] font-semibold px-1.5 py-0.5 rounded whitespace-nowrap shadow ${
                                 isDanger
-                                  ? 'border-red-500 bg-red-500/25 ring-2 ring-red-500/50'
+                                  ? 'bg-rose-600'
                                   : isAttention
-                                  ? 'border-amber-400 bg-amber-400/20'
-                                  : 'border-emerald-400 bg-emerald-500/10'
+                                  ? 'bg-amber-500 text-slate-950'
+                                  : 'bg-teal-600'
                               }`}
                             >
-                              <div
-                                className={`absolute -top-5 left-0 text-white text-[10px] font-semibold px-1.5 py-0.5 rounded whitespace-nowrap shadow ${
-                                  isDanger
-                                    ? 'bg-red-600 animate-pulse'
-                                    : isAttention
-                                    ? 'bg-amber-500 text-slate-950'
-                                    : 'bg-emerald-600'
-                                }`}
-                              >
-                                {worker.ppeOk === false
-                                  ? `${worker.id} • НЕТ КАСКИ!`
-                                  : isDanger
-                                  ? `${worker.id} • ОПАСНАЯ ЗОНА!`
-                                  : isAttention
-                                  ? `${worker.id} • Контроль СИЗ`
-                                  : `${worker.label} • Норма`}
-                              </div>
+                              {isDanger
+                                ? `${worker.id} • Опасная зона`
+                                : isAttention
+                                ? `${worker.id} • Контроль СИЗ`
+                                : `${worker.label} • Норма`}
                             </div>
-                          );
-                        })}
-                    </div>
-
-                    {currentCamera.cameraType === 'dynamic' && (
-                      <div
-                        onMouseDown={(e) => e.stopPropagation()}
-                        className="absolute top-3 right-3 flex items-center gap-1 bg-slate-950/85 backdrop-blur-xs border border-slate-700/80 rounded-xl p-1 z-30 text-slate-200"
-                      >
-                        <button
-                          onClick={() => adjustCameraPan(-10)}
-                          title="Поворот влево"
-                          className="p-1.5 hover:bg-slate-800 rounded-lg cursor-pointer"
-                        >
-                          <ChevronLeft size={14} />
-                        </button>
-                        <button
-                          onClick={() => adjustCameraPan(10)}
-                          title="Поворот вправо"
-                          className="p-1.5 hover:bg-slate-800 rounded-lg cursor-pointer"
-                        >
-                          <ChevronRight size={14} />
-                        </button>
-                        <button
-                          onClick={() => adjustCameraTilt(-8)}
-                          title="Наклон вверх"
-                          className="p-1.5 hover:bg-slate-800 rounded-lg cursor-pointer"
-                        >
-                          <ChevronUp size={14} />
-                        </button>
-                        <button
-                          onClick={() => adjustCameraTilt(8)}
-                          title="Наклон вниз"
-                          className="p-1.5 hover:bg-slate-800 rounded-lg cursor-pointer"
-                        >
-                          <ChevronDown size={14} />
-                        </button>
-                        <button
-                          onClick={() => adjustCameraZoom(0.15)}
-                          title="Приблизить (Zoom +)"
-                          className="p-1.5 hover:bg-slate-800 rounded-lg cursor-pointer"
-                        >
-                          <ZoomIn size={14} />
-                        </button>
-                        <button
-                          onClick={() => adjustCameraZoom(-0.15)}
-                          title="Отдалить (Zoom -)"
-                          className="p-1.5 hover:bg-slate-800 rounded-lg cursor-pointer"
-                        >
-                          <ZoomOut size={14} />
-                        </button>
-                        <button
-                          onClick={resetCameraPTZ}
-                          title="Центрировать 0°"
-                          className="p-1.5 hover:bg-slate-800 rounded-lg cursor-pointer"
-                        >
-                          <Crosshair size={13} />
-                        </button>
-                        <button
-                          onClick={toggleAutoPatrol}
-                          title="Автоматическое патрулирование 360°"
-                          className={`p-1.5 rounded-lg cursor-pointer ${
-                            currentCamera.autoPatrol ? 'bg-amber-600 text-white' : 'hover:bg-slate-800'
-                          }`}
-                        >
-                          <RotateCw size={13} className={currentCamera.autoPatrol ? 'animate-spin' : ''} />
-                        </button>
-                      </div>
-                    )}
-
-                    <div className="absolute bottom-3 left-3 flex flex-wrap items-center gap-2 pointer-events-none z-30">
-                      <span className="px-2.5 py-1 rounded-lg bg-slate-950/85 border border-slate-700 text-[11px] font-mono text-slate-200 flex items-center gap-1.5">
-                        <Cpu size={12} className="text-sky-400" />
-                        {currentCamera.code} • {currentCamera.fps} FPS • {currentCamera.latency} • Зум {currentCamera.zoomLevel}x
-                      </span>
-                      {showHeatmap && (
-                        <span className="px-2.5 py-1 rounded-lg bg-amber-500/90 text-slate-950 text-[11px] font-bold">
-                          Предиктивный риск смены: Высокий (Зона манипулятора)
-                        </span>
-                      )}
-                      {collidingDangerWorker && (
-                        <span className="px-2.5 py-1 rounded-lg bg-red-600 text-white text-[11px] font-bold animate-pulse">
-                          ТРЕВОГА: Нарушение ТБ ({collidingDangerWorker.id})
-                        </span>
-                      )}
-                    </div>
+                          </div>
+                        );
+                      })}
                   </div>
 
-                  {/* ИНТЕРАКТИВНЫЙ ТАЙМЛАЙН СМЕНЫ С МЕТКАМИ ИНЦИДЕНТОВ + АВТОМАТИКА */}
-                  <div className="px-4 py-2.5 border-t border-inherit flex flex-wrap items-center justify-between gap-3 text-xs">
-                    <div className="flex flex-wrap items-center gap-4">
-                      <label className="flex items-center gap-1.5 cursor-pointer font-medium">
-                        <input
-                          type="checkbox"
-                          checked={sirenEnabled}
-                          onChange={(e) => setSirenEnabled(e.target.checked)}
-                        />
-                        <Volume2 size={14} className="text-amber-500" />
-                        <span>Сирена в цеху</span>
-                      </label>
-
-                      <label className="flex items-center gap-1.5 cursor-pointer font-medium">
-                        <input
-                          type="checkbox"
-                          checked={skudLockEnabled}
-                          onChange={(e) => setSkudLockEnabled(e.target.checked)}
-                        />
-                        <Lock size={14} className="text-sky-500" />
-                        <span>Авто-блокировка СКУД</span>
-                      </label>
-                    </div>
-
-                    <div className="flex items-center gap-2 flex-1 max-w-md mx-2">
-                      <span className={`text-[10px] font-mono ${textMuted}`}>08:00</span>
-                      <div className={`relative flex-1 h-2 rounded-full flex items-center ${isDark ? 'bg-slate-800' : 'bg-slate-200'}`}>
-                        {events.slice(0, 8).map((ev, idx) => {
-                          const pos = 15 + ((idx * 17) % 75);
-                          return (
-                            <button
-                              key={ev.id}
-                              onClick={() => setSelectedEventId(ev.id)}
-                              style={{ left: `${pos}%` }}
-                              title={`${ev.timestamp} — ${ev.violation_title}`}
-                              className={`absolute -translate-x-1/2 w-3 h-3 rounded-full border border-white cursor-pointer transition-transform hover:scale-125 ${
-                                ev.severity === 'critical' ? 'bg-red-500' : 'bg-amber-400'
-                              }`}
-                            />
-                          );
-                        })}
-                      </div>
-                      <span className={`text-[10px] font-mono ${textMuted}`}>LIVE</span>
-                    </div>
-
-                    <button
-                      onClick={() => toggleCameraType(currentCamera.id)}
-                      className={`text-[11px] font-semibold px-2.5 py-1 rounded-lg border cursor-pointer ${themeSubCard}`}
-                    >
-                      Привод: {currentCamera.cameraType === 'dynamic' ? 'Динамичная PTZ' : 'Статичная'}
-                    </button>
+                  <div className="absolute bottom-3 left-3 flex flex-wrap items-center gap-2 pointer-events-none z-30">
+                    <span className="px-2.5 py-1 rounded-lg bg-slate-950/85 border border-slate-700 text-[11px] font-mono text-slate-200">
+                      {currentCamera.code} • {currentCamera.fps} FPS • {currentCamera.latency}
+                    </span>
                   </div>
                 </div>
 
-                {/* ПРАВАЯ ЧАСТЬ (4 из 12): Лента событий */}
-                <div
-                  className={`lg:col-span-4 border rounded-2xl flex flex-col overflow-hidden ${themeCard}`}
-                >
-                  <div className="p-3.5 border-b border-inherit flex items-center justify-between gap-2 shrink-0">
-                    <div>
-                      <h2 className="text-sm font-bold flex items-center gap-1.5">
-                        <span>Лента событий</span>
-                        <span className="text-[11px] px-2 py-0.5 rounded-full bg-red-500/15 text-red-500 font-bold">
-                          {events.filter((e) => e.status === 'new').length} новых
-                        </span>
-                      </h2>
-                      <p className={`text-[11px] flex items-center gap-1 mt-0.5 ${textMuted}`}>
-                        <Keyboard size={11} /> Быстрые клавиши: [1] Подтв. [2] Мастеру [3] Ложное
-                      </p>
-                    </div>
-                    <select
-                      value={filterStatus}
-                      onChange={(e) => setFilterStatus(e.target.value)}
-                      className={`text-xs rounded-xl px-2.5 py-1.5 border font-medium ${themeSubCard}`}
-                    >
-                      <option value="all">Все ({events.length})</option>
-                      <option value="new">Новые</option>
-                      <option value="confirmed">Подтверждено</option>
-                      <option value="sent_to_master">У мастера</option>
-                      <option value="false_alarm">Ложные ({falseAlarmEvents.length})</option>
-                    </select>
-                  </div>
+                {/* Нижняя полоса под камерой */}
+                <div className="px-4 py-2.5 border-t border-inherit flex flex-wrap items-center justify-between gap-3 text-xs shrink-0 rounded-b-2xl">
+                  <label className="flex items-center gap-1.5 cursor-pointer font-medium">
+                    <input
+                      type="checkbox"
+                      checked={sirenEnabled}
+                      onChange={(e) => setSirenEnabled(e.target.checked)}
+                    />
+                    <Volume2 size={14} className="text-amber-500" />
+                    <span>Сирена в цеху</span>
+                  </label>
 
-                  <div className="p-3 space-y-2.5 overflow-y-auto flex-1 max-h-[520px]">
-                    {filteredEvents.map((ev) => {
-                      const isSelected = ev.id === selectedEventId;
-                      const isCritical = ev.severity === 'critical' || ev.violation === 'PERSON_FALL';
-                      return (
-                        <div
-                          key={ev.id}
-                          onClick={() => setSelectedEventId(ev.id)}
-                          className={`p-3 rounded-xl border transition cursor-pointer ${
-                            isSelected
-                              ? 'ring-2 ring-sky-500 border-sky-500'
-                              : `${themeSubCard} hover:border-slate-400`
-                          }`}
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <div>
-                              <div className="flex items-center gap-1.5">
-                                <span
-                                  className={`text-[10px] font-bold px-2 py-0.5 rounded ${
-                                    isCritical
-                                      ? 'bg-red-600 text-white'
-                                      : 'bg-amber-500 text-slate-950'
-                                  }`}
-                                >
-                                  Паттерн {ev.pattern_code}
-                                </span>
-                                <span className={`text-xs font-mono ${textMuted}`}>
-                                  #{ev.id} • {ev.camera_code}
-                                </span>
-                              </div>
-                              <h3 className="text-xs font-bold mt-1">{ev.violation_title}</h3>
-                            </div>
-                            <span className="text-xs font-mono font-semibold text-sky-500">
-                              {ev.timestamp}
-                            </span>
-                          </div>
-
-                          <p className={`text-[11px] mt-1 ${textMuted}`}>{ev.description}</p>
-
-                          {isCritical && (
-                            <div onClick={(e) => e.stopPropagation()} className="mt-2">
-                              <button
-                                onClick={() => handleEmergencyDispatch(ev)}
-                                className={`w-full py-1.5 px-2.5 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1.5 cursor-pointer transition ${
-                                  emergencyDispatchedId === ev.id
-                                    ? 'bg-emerald-600 text-white'
-                                    : 'bg-red-600 hover:bg-red-500 text-white animate-pulse'
-                                }`}
-                              >
-                                <HeartPulse size={13} />
-                                {emergencyDispatchedId === ev.id
-                                  ? 'Медпункт вызван • Линия остановлена (18 сек)'
-                                  : 'Экстренно: Вызвать медпункт и стоп линии (< 30 с)'}
-                              </button>
-                            </div>
-                          )}
-
-                          <div
-                            className={`mt-2.5 pt-2 border-t flex items-center justify-between gap-1 ${
-                              isDark ? 'border-slate-700/70' : 'border-slate-200'
+                  <div className="flex items-center gap-2 flex-1 max-w-md mx-2">
+                    <span className={`text-[10px] font-mono ${textMuted}`}>08:00</span>
+                    <div className={`relative flex-1 h-2 rounded-full flex items-center ${isDark ? 'bg-slate-800' : 'bg-slate-200'}`}>
+                      {events.slice(0, 8).map((ev, idx) => {
+                        const pos = 15 + ((idx * 17) % 75);
+                        return (
+                          <button
+                            key={ev.id}
+                            onClick={() => setSelectedEventId(ev.id)}
+                            style={{ left: `${pos}%` }}
+                            title={`${ev.timestamp} — ${ev.violation_title}`}
+                            className={`absolute -translate-x-1/2 w-2.5 h-2.5 rounded-full border border-white cursor-pointer transition-transform hover:scale-125 ${
+                              ev.severity === 'critical' ? 'bg-rose-500' : 'bg-amber-400'
                             }`}
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <div className="flex items-center gap-1">
-                              <button
-                                onClick={() => handleProcessEvent(ev.id, 'confirmed')}
-                                className={`px-2 py-1 rounded-lg text-[11px] font-medium border flex items-center gap-1 cursor-pointer transition ${
-                                  ev.status === 'confirmed'
-                                    ? 'bg-emerald-600 text-white border-emerald-600'
-                                    : `${themeCard} border-emerald-500/40 hover:border-emerald-500`
-                                }`}
-                              >
-                                <CheckCircle2 size={12} />
-                                <span>Подтв.</span>
-                              </button>
-                              <button
-                                onClick={() => handleProcessEvent(ev.id, 'sent_to_master')}
-                                className={`px-2 py-1 rounded-lg text-[11px] font-medium border flex items-center gap-1 cursor-pointer transition ${
-                                  ev.status === 'sent_to_master'
-                                    ? 'bg-sky-600 text-white border-sky-600'
-                                    : `${themeCard} hover:border-sky-500`
-                                }`}
-                              >
-                                <Send size={12} />
-                                <span>Мастеру</span>
-                              </button>
-                              <button
-                                onClick={() => handleProcessEvent(ev.id, 'false_alarm')}
-                                className={`px-2 py-1 rounded-lg text-[11px] font-medium border flex items-center gap-1 cursor-pointer transition ${
-                                  ev.status === 'false_alarm'
-                                    ? 'bg-red-600 text-white border-red-600'
-                                    : `${themeCard} border-red-500/40 text-red-500 hover:bg-red-500/10`
-                                }`}
-                              >
-                                <XCircle size={12} />
-                                <span>Ложное</span>
-                              </button>
-                            </div>
-
-                            <button
-                              onClick={() => setInspectModalEvent(ev)}
-                              title="Открыть стоп-кадр и видеоклип"
-                              className="p-1.5 rounded-lg text-sky-500 hover:bg-sky-500/10 cursor-pointer"
-                            >
-                              <Maximize2 size={13} />
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
+                          />
+                        );
+                      })}
+                    </div>
+                    <span className={`text-[10px] font-mono ${textMuted}`}>LIVE</span>
                   </div>
+
+                  <button
+                    onClick={() => toggleCameraType(currentCamera.id)}
+                    className={`text-[11px] font-semibold px-2.5 py-1 rounded-lg border cursor-pointer ${themeSubCard}`}
+                  >
+                    Привод: {currentCamera.cameraType === 'dynamic' ? 'Динамичная PTZ' : 'Статичная'}
+                  </button>
                 </div>
               </div>
 
-              {/* НАГЛЯДНАЯ КАРТОЧКА ДЕКОМПОЗИЦИИ КОНВЕЙЕРА И ТАЙМИНГОВ LinQ TPU */}
-              <div className={`border rounded-2xl p-4 ${themeCard}`}>
-                <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-                  <div className="flex items-center gap-2">
-                    <Activity size={17} className="text-sky-500" />
-                    <h3 className="text-xs font-bold uppercase tracking-wider">
-                      Аппаратный конвейер обработки кадра LinQ TPU ({currentCamera.tpuProgram})
-                    </h3>
+              {/* ПРАВАЯ ЧАСТЬ (4 из 12): Лента событий с внутренним скроллом */}
+              <div
+                className={`lg:col-span-4 border rounded-2xl flex flex-col h-full min-h-0 overflow-hidden ${themeCard}`}
+              >
+                <div className="p-3.5 border-b border-inherit flex items-center justify-between gap-2 shrink-0">
+                  <div>
+                    <h2 className="text-sm font-bold flex items-center gap-2">
+                      <span>Лента событий</span>
+                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-500 font-semibold">
+                        {events.filter((e) => e.status === 'new').length} новых
+                      </span>
+                    </h2>
+                    <p className={`text-[11px] flex items-center gap-1 mt-0.5 ${textMuted}`}>
+                      <Keyboard size={11} /> Клавиши: [1] Подтв. [2] Мастеру [3] Ложное
+                    </p>
                   </div>
-                  <div className="flex items-center gap-3 text-xs">
-                    <span className="px-2.5 py-0.5 rounded-lg bg-emerald-500/15 text-emerald-500 font-mono font-bold">
-                      Суммарная задержка: {currentCamera.latency} ({currentCamera.fps} FPS)
-                    </span>
-                    <span className="px-2.5 py-0.5 rounded-lg bg-sky-500/15 text-sky-500 font-mono font-semibold">
-                      Температура кристалла: 46°C
-                    </span>
-                  </div>
+                  <select
+                    value={filterStatus}
+                    onChange={(e) => setFilterStatus(e.target.value)}
+                    className={`text-xs rounded-xl px-2.5 py-1.5 border font-medium ${themeSubCard}`}
+                  >
+                    <option value="all">Все ({events.length})</option>
+                    <option value="new">Новые</option>
+                    <option value="confirmed">Подтверждено</option>
+                    <option value="sent_to_master">У мастера</option>
+                    <option value="false_alarm">Ложные ({falseAlarmEvents.length})</option>
+                  </select>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-                  {[
-                    {
-                      step: 'Этап 01 • Препроцессинг',
-                      title: 'Декодирование RTSP + CLAHE',
-                      time: '1.8 мс',
-                      pct: 16,
-                      sub: 'Нормализация 640×640 RGB и фильтрация пыли',
-                      color: 'bg-sky-500',
-                    },
-                    {
-                      step: 'Этап 02 • Ускоритель LinQ TPU',
-                      title: 'Квантованный инференс INT8',
-                      time: '7.4 мс',
-                      pct: 66,
-                      sub: `${currentCamera.rulesVector.filter(Boolean).length} активных детекторов ТБ и СИЗ`,
-                      color: 'bg-emerald-500',
-                    },
-                    {
-                      step: 'Этап 03 • Постпроцессинг',
-                      title: 'NMS + Трекер ByteTrack',
-                      time: '1.4 мс',
-                      pct: 13,
-                      sub: `Проверка ${currentCamera.zones.length} зон и фильтр повторов`,
-                      color: 'bg-amber-500',
-                    },
-                    {
-                      step: 'Этап 04 • Реакция и СУБД',
-                      title: 'Гомография + PostgreSQL',
-                      time: '0.6 мс',
-                      pct: 5,
-                      sub: 'Запись в events и сигнал на СКУД / Сирену',
-                      color: 'bg-purple-500',
-                    },
-                  ].map((st, i) => (
-                    <div key={i} className={`p-3.5 rounded-xl border flex flex-col justify-between ${themeSubCard}`}>
-                      <div>
-                        <div className="flex items-center justify-between text-[11px]">
-                          <span className={`font-semibold ${textMuted}`}>{st.step}</span>
-                          <span className="font-mono font-bold text-sm text-sky-500">{st.time}</span>
+                <div className="p-3 space-y-2.5 overflow-y-auto flex-1 min-h-0">
+                  {filteredEvents.map((ev) => {
+                    const isSelected = ev.id === selectedEventId;
+                    const isCritical = ev.severity === 'critical' || ev.violation === 'PERSON_FALL';
+                    return (
+                      <div
+                        key={ev.id}
+                        onClick={() => setSelectedEventId(ev.id)}
+                        className={`p-3 rounded-xl border transition cursor-pointer ${
+                          isSelected
+                            ? 'ring-1 ring-sky-500/80 border-sky-500/80'
+                            : `${themeSubCard} hover:border-slate-500`
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <div className="flex items-center gap-1.5">
+                              <span
+                                className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                                  isCritical
+                                    ? 'bg-rose-500/20 text-rose-500 border border-rose-500/30'
+                                    : 'bg-amber-500/20 text-amber-600 dark:text-amber-300 border border-amber-500/30'
+                                }`}
+                              >
+                                Паттерн {ev.pattern_code}
+                              </span>
+                              <span className={`text-xs font-mono ${textMuted}`}>
+                                #{ev.id} • {ev.camera_code}
+                              </span>
+                            </div>
+                            <h3 className="text-xs font-bold mt-1">{ev.violation_title}</h3>
+                          </div>
+                          <span className={`text-xs font-mono font-semibold ${textMuted}`}>
+                            {ev.timestamp}
+                          </span>
                         </div>
-                        <p className="text-xs font-bold mt-1">{st.title}</p>
-                        <p className={`text-[11px] mt-0.5 ${textMuted}`}>{st.sub}</p>
+
+                        <p className={`text-[11px] mt-1 ${textMuted}`}>{ev.description}</p>
+
+                        <div
+                          className={`mt-2.5 pt-2 border-t flex items-center justify-between gap-1 ${
+                            isDark ? 'border-slate-800' : 'border-slate-200'
+                          }`}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => handleProcessEvent(ev.id, 'confirmed')}
+                              className={`px-2.5 py-1 rounded-lg text-[11px] font-medium border flex items-center gap-1 cursor-pointer transition ${
+                                ev.status === 'confirmed'
+                                  ? 'bg-teal-600 text-white border-teal-600'
+                                  : `${themeCard} hover:border-teal-500/60`
+                              }`}
+                            >
+                              <CheckCircle2 size={12} />
+                              <span>Подтв.</span>
+                            </button>
+                            <button
+                              onClick={() => handleProcessEvent(ev.id, 'sent_to_master')}
+                              className={`px-2.5 py-1 rounded-lg text-[11px] font-medium border flex items-center gap-1 cursor-pointer transition ${
+                                ev.status === 'sent_to_master'
+                                  ? 'bg-sky-600 text-white border-sky-600'
+                                  : `${themeCard} hover:border-sky-500/60`
+                              }`}
+                            >
+                              <Send size={12} />
+                              <span>Мастеру</span>
+                            </button>
+                            <button
+                              onClick={() => handleProcessEvent(ev.id, 'false_alarm')}
+                              className={`px-2.5 py-1 rounded-lg text-[11px] font-medium border flex items-center gap-1 cursor-pointer transition ${
+                                ev.status === 'false_alarm'
+                                  ? 'bg-rose-600 text-white border-rose-600'
+                                  : `${themeCard} text-rose-500 hover:border-rose-500/60`
+                              }`}
+                            >
+                              <XCircle size={12} />
+                              <span>Ложное</span>
+                            </button>
+                          </div>
+
+                          <button
+                            onClick={() => setInspectModalEvent(ev)}
+                            title="Открыть стоп-кадр и видеоклип"
+                            className="p-1.5 rounded-lg text-sky-500 hover:bg-sky-500/10 cursor-pointer"
+                          >
+                            <Maximize2 size={13} />
+                          </button>
+                        </div>
                       </div>
-                      <div className={`mt-2.5 w-full h-1.5 rounded-full overflow-hidden ${isDark ? 'bg-slate-800' : 'bg-slate-200'}`}>
-                        <div className={`h-full ${st.color}`} style={{ width: `${st.pct}%` }} />
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -2770,214 +2470,34 @@ function Dashboard({ user: currentUser, initial, onLogout }) {
 
           {/* ================= ВКЛАДКА 2: МУЛЬТИЭКРАН ================= */}
           {activeTab === 'multiview' && (
-            <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
-              <div className={`lg:col-span-8 border rounded-2xl p-5 flex flex-col justify-between ${themeCard}`}>
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <h2 className="text-sm font-bold flex items-center gap-2">
-                      <Layers size={16} className="text-sky-500" />
-                      Видеостена промышленного мониторинга ({cameras.length} активных потока)
-                    </h2>
-                    <p className={`text-xs ${textMuted}`}>
-                      Параллельный аппаратный инференс всех потоков на кластере LinQ TPU
-                    </p>
-                  </div>
-                  <span className="text-xs font-mono px-2.5 py-1 rounded-lg bg-sky-500/15 text-sky-500 font-bold">
-                    Суммарно: {cameras.reduce((a, c) => a + (c.fps || 95), 0)} FPS
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 flex-1">
-                  {cameras.map((cam) => (
-                    <div
-                      key={cam.id}
-                      onClick={() => {
-                        setSelectedCamId(cam.id);
-                        setActiveTab('monitoring');
-                      }}
-                      className={`p-4 rounded-2xl border cursor-pointer transition flex flex-col justify-between min-h-[240px] relative overflow-hidden bg-slate-950 text-white ${
-                        selectedCamId === cam.id ? 'ring-2 ring-sky-500 border-sky-500' : 'border-slate-800 hover:border-sky-500/60'
-                      }`}
-                    >
-                      <div
-                        className="absolute inset-0 opacity-15 pointer-events-none"
-                        style={{
-                          backgroundImage:
-                            'linear-gradient(to right, #38bdf8 1px, transparent 1px), linear-gradient(to bottom, #38bdf8 1px, transparent 1px)',
-                          backgroundSize: '32px 32px',
-                        }}
-                      />
-                      <div className="relative z-10 flex items-center justify-between">
-                        <span className="text-xs font-bold px-2.5 py-0.5 rounded bg-sky-600">
-                          {cam.code}
-                        </span>
-                        <span className="text-[11px] font-mono text-emerald-400">
-                          {cam.fps} FPS • {cam.cameraType === 'dynamic' ? 'PTZ' : 'Стат.'}
-                        </span>
-                      </div>
-
-                      <div className="relative z-10 my-auto text-center">
-                        <Video size={28} className="mx-auto text-sky-400/70 mb-1.5" />
-                        <p className="text-sm font-bold">{cam.name}</p>
-                        <p className="text-xs text-slate-400 mt-0.5">{cam.site_name}</p>
-                      </div>
-
-                      <div className="relative z-10 flex items-center justify-between text-xs text-slate-300 border-t border-slate-800 pt-2.5">
-                        <span>Активных зон: {cam.zones.length} • Правил: {cam.rulesVector.filter(Boolean).length}</span>
-                        <span className="text-sky-400 font-semibold">Развернуть →</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+            <div className={`flex-1 border rounded-2xl p-5 flex flex-col min-h-[calc(100vh-110px)] ${themeCard}`}>
+              <div className="flex items-center justify-between mb-4 shrink-0">
+                <h2 className="text-sm font-bold flex items-center gap-2">
+                  <Layers size={16} className="text-sky-400" />
+                  Видеостена мониторинга ({cameras.length})
+                </h2>
+                <span className="text-xs font-mono px-2.5 py-1 rounded-lg bg-slate-500/15 font-semibold">
+                  Суммарно: {cameras.reduce((a, c) => a + (c.fps || 95), 0)} FPS
+                </span>
               </div>
 
-              <div className={`lg:col-span-4 border rounded-2xl p-5 flex flex-col justify-between ${themeCard}`}>
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <div>
-                      <h3 className="text-sm font-bold flex items-center gap-1.5">
-                        <Radar size={16} className="text-amber-500" />
-                        ИИ-локатор позиции нарушителя (Homography)
-                      </h3>
-                      <p className={`text-xs ${textMuted}`}>
-                        Событие #{activeEvent.id} • {activeEvent.violation_title}
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => setInspectModalEvent(activeEvent)}
-                      className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-sky-500/15 text-sky-500 cursor-pointer"
-                    >
-                      Кадр
-                    </button>
-                  </div>
-
-                  <div className="relative bg-slate-950 rounded-2xl h-64 border border-slate-800 overflow-hidden flex items-center justify-center my-2">
-                    <div
-                      className="absolute inset-0 opacity-20"
-                      style={{
-                        backgroundImage: 'radial-gradient(#38bdf8 1px, transparent 1px)',
-                        backgroundSize: '18px 18px',
-                      }}
-                    />
-                    <div
-                      style={{
-                        left: `${activeEvent.ai_pos.x}%`,
-                        top: `${activeEvent.ai_pos.y}%`,
-                      }}
-                      className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center"
-                    >
-                      <span className="w-5 h-5 rounded-full bg-red-500 animate-ping absolute" />
-                      <span className="w-3.5 h-3.5 rounded-full bg-red-500 border-2 border-white relative z-10" />
-                      <span className="text-[10px] bg-black/85 text-white px-2 py-0.5 rounded mt-1.5 whitespace-nowrap">
-                        {activeEvent.camera_code} (X:{activeEvent.ai_pos.x}%, Y:{activeEvent.ai_pos.y}%)
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className={`mt-4 p-3.5 rounded-xl border space-y-2 text-xs ${themeSubCard}`}>
-                    <p className="font-bold">Статус аппаратного кластера LinQ TPU:</p>
-                    <div className="flex justify-between">
-                      <span className={textMuted}>Модель детекции:</span>
-                      <span className="font-mono font-semibold">yolov8m_safety_v2_int8.tpu</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className={textMuted}>Трекер объектов:</span>
-                      <span className="font-mono font-semibold text-emerald-500">ByteTrack (Активен)</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className={textMuted}>Загрузка NPU ядер:</span>
-                      <span className="font-mono font-semibold text-sky-500">42% (Штатный режим)</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-4 pt-3 border-t border-inherit">
-                  <label className={`block text-xs font-medium mb-1.5 ${textMuted}`}>
-                    Оперативный комментарий в журнал (events.description):
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <MessageSquare size={14} className={textMuted} />
-                    <input
-                      type="text"
-                      value={activeEvent.description}
-                      onChange={(e) => handleUpdateEventComment(activeEvent.id, e.target.value)}
-                      placeholder="Введите примечание..."
-                      className={`text-xs px-3 py-2 rounded-xl border flex-1 ${themeSubCard}`}
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ================= ВКЛАДКА 3: КАРТА И ПРАВИЛА (С адаптивным JSONB для светлой и темной темы!) ================= */}
-          {activeTab === 'map_rules' && (
-            <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
-              <div className="lg:col-span-7 flex flex-col gap-4 justify-between">
-                <div className={`border rounded-2xl p-5 flex-1 flex flex-col justify-between ${themeCard}`}>
-                  <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-inherit">
-                    <div>
-                      <h2 className="text-sm font-bold flex items-center gap-2">
-                        <Move size={16} className="text-sky-500" />
-                        Интерактивная карта цеха (Перетаскивайте камеры и настраивайте сектор обзора)
-                      </h2>
-                      <p className={`text-xs ${textMuted}`}>
-                        Луч обзора жестко закреплен в центре камеры и вращается вокруг её оси
-                      </p>
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-2">
-                      <div className={`flex items-center gap-2 px-3 py-1 rounded-xl border text-xs ${themeSubCard}`}>
-                        <Compass size={14} className="text-sky-500" />
-                        <span>Азимут {currentCamera.code}:</span>
-                        <input
-                          type="range"
-                          min="-180"
-                          max="180"
-                          value={currentCamera.mapDirection || 0}
-                          onChange={(e) => adjustCameraMapDirection(e.target.value)}
-                          className="w-20 accent-sky-500 cursor-pointer"
-                        />
-                        <span className="font-mono font-bold w-9 text-right">
-                          {(currentCamera.mapDirection || 0) + (currentCamera.panAngle || 0)}°
-                        </span>
-                      </div>
-
-                      <label className={`px-3 py-1 rounded-xl text-xs font-semibold border flex items-center gap-1.5 cursor-pointer ${themeSubCard}`}>
-                        <ImageIcon size={13} className="text-sky-500" />
-                        <span>Чертеж</span>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={handleFloorplanUpload}
-                          className="hidden"
-                        />
-                      </label>
-
-                      <button
-                        onClick={() => setShowHeatmap(!showHeatmap)}
-                        className={`px-3 py-1 rounded-xl text-xs font-semibold border flex items-center gap-1.5 cursor-pointer ${
-                          showHeatmap ? 'bg-red-600 text-white border-red-600' : themeSubCard
-                        }`}
-                      >
-                        <Flame size={13} /> Риски
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* ПОЛОТНО КАРТЫ ЦЕХА */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 flex-1">
+                {cameras.map((cam) => (
                   <div
-                    ref={mapContainerRef}
-                    onMouseMove={handleMapMouseMove}
-                    onMouseUp={() => setDraggingCamId(null)}
-                    onMouseLeave={() => setDraggingCamId(null)}
-                    className="mt-4 relative bg-slate-950 border-2 border-slate-800 rounded-2xl flex-1 min-h-[440px] select-none overflow-hidden"
+                    key={cam.id}
+                    onClick={() => {
+                      setSelectedCamId(cam.id);
+                      setActiveTab('monitoring');
+                    }}
+                    className={`p-5 rounded-2xl border cursor-pointer transition flex flex-col justify-between aspect-video min-h-[380px] relative overflow-hidden bg-[#090D16] text-white ${
+                      selectedCamId === cam.id ? 'ring-2 ring-sky-500 border-sky-500' : 'border-slate-800 hover:border-slate-600'
+                    }`}
                   >
-                    {floorplanBgUrl && (
+                    {cam.ai?.online && cam.ai?.stream_url && (
                       <img
-                        src={floorplanBgUrl}
-                        alt="Чертеж цеха"
-                        className="absolute inset-0 w-full h-full object-cover opacity-55 pointer-events-none"
+                        src={cam.ai.stream_url}
+                        alt={cam.name}
+                        className="absolute inset-0 w-full h-full object-contain pointer-events-none"
                       />
                     )}
 
@@ -2990,197 +2510,155 @@ function Dashboard({ user: currentUser, initial, onLogout }) {
                       }}
                     />
 
-                    {showHeatmap && (
-                      <div
-                        className="absolute w-64 h-64 rounded-full blur-2xl opacity-60 pointer-events-none"
-                        style={{
-                          left: '14%',
-                          top: '18%',
-                          background:
-                            'radial-gradient(circle, rgba(239,68,68,0.85) 0%, rgba(245,158,11,0.4) 60%, transparent 80%)',
-                        }}
-                      />
+                    <div className="relative z-10 flex items-center justify-between">
+                      <span className="text-xs font-bold px-3 py-1 rounded-lg bg-slate-900/90 border border-slate-700">
+                        {cam.code}
+                      </span>
+                      <span className="text-xs font-mono px-2.5 py-1 rounded-lg bg-slate-900/90 text-teal-400 border border-slate-800">
+                        {cam.fps} FPS • {cam.cameraType === 'dynamic' ? 'PTZ' : 'Стат.'}
+                      </span>
+                    </div>
+
+                    {!(cam.ai?.online && cam.ai?.stream_url) && (
+                      <div className="relative z-10 my-auto text-center">
+                        <Video size={36} className="mx-auto text-slate-500 mb-2.5" />
+                        <p className="text-base font-bold">{cam.name}</p>
+                        <p className="text-xs text-slate-400 mt-1">{cam.site_name}</p>
+                      </div>
                     )}
 
-                    <div className="absolute top-8 left-10 w-40 h-28 bg-red-500/15 border border-red-500/60 rounded-xl p-2.5 pointer-events-none">
-                      <span className="text-[10px] font-bold text-red-300 uppercase">
-                        ОПО А-1: Зона кран-балки
-                      </span>
+                    <div className="relative z-10 flex items-center justify-between text-xs text-slate-300 bg-slate-950/80 backdrop-blur-xs px-3.5 py-2 rounded-xl border border-slate-800/90">
+                      <span>Зон контроля: {cam.zones.length} • Правил активно: {cam.rulesVector.filter(Boolean).length}</span>
+                      <span className="text-sky-400 font-semibold">Открыть камеру →</span>
                     </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
-                    <div className="absolute bottom-10 left-1/3 w-44 h-28 bg-amber-500/15 border border-amber-400/60 rounded-xl p-2.5 pointer-events-none">
-                      <span className="text-[10px] font-bold text-amber-200 uppercase">
-                        Линия сборки и конвейер
+          {/* ================= ВКЛАДКА 3: КАРТА И ПРАВИЛА ================= */}
+          {activeTab === 'map_rules' && (
+            <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch min-h-[calc(100vh-110px)]">
+              <div className={`lg:col-span-7 border rounded-2xl p-5 flex flex-col justify-between ${themeCard}`}>
+                <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-inherit shrink-0">
+                  <h2 className="text-sm font-bold flex items-center gap-2">
+                    <Map size={16} className="text-sky-400" />
+                    Интерактивная карта цеха
+                  </h2>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className={`flex items-center gap-1 px-2 py-1 rounded-xl border text-xs ${themeSubCard}`}>
+                      <button
+                        type="button"
+                        onClick={() => handleAdjustMapZoom(-0.2)}
+                        className="p-1 hover:text-sky-400 cursor-pointer"
+                        title="Отдалить карту"
+                      >
+                        <ZoomOut size={14} />
+                      </button>
+                      <span className="font-mono font-bold px-1.5 min-w-[44px] text-center">
+                        {Math.round(mapZoom * 100)}%
                       </span>
-                    </div>
-
-                    <div className="absolute top-10 right-10 w-32 h-28 bg-slate-800/80 border border-slate-600 rounded-xl p-2 flex items-center justify-center text-center pointer-events-none">
-                      <span className="text-[10px] text-slate-300 font-medium">
-                        Стеллажи хранения (ОПО А-2)
-                      </span>
-                    </div>
-
-                    {cameras.map((cam) => {
-                      const isSelected = cam.id === selectedCamId;
-                      const totalAngle = (cam.mapDirection || 0) + (cam.panAngle || 0);
-                      return (
-                        <div
-                          key={cam.id}
-                          style={{
-                            left: `${cam.mapPos.x}%`,
-                            top: `${cam.mapPos.y}%`,
+                      <button
+                        type="button"
+                        onClick={() => handleAdjustMapZoom(0.2)}
+                        className="p-1 hover:text-sky-400 cursor-pointer"
+                        title="Приблизить карту"
+                      >
+                        <ZoomIn size={14} />
+                      </button>
+                      {(mapZoom !== 1 || mapPan.x !== 0 || mapPan.y !== 0) && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setMapZoom(1);
+                            setMapPan({ x: 0, y: 0 });
                           }}
-                          onMouseDown={(e) => {
-                            e.stopPropagation();
-                            setSelectedCamId(cam.id);
-                            setDraggingCamId(cam.id);
-                          }}
-                          className="group absolute -translate-x-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center cursor-grab active:cursor-grabbing z-20"
+                          className="p-1 hover:text-amber-400 cursor-pointer"
+                          title="Сбросить масштаб и позицию"
                         >
-                          <svg
-                            viewBox="-65 -65 130 130"
-                            className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 overflow-visible"
-                          >
-                            <defs>
-                              <radialGradient id={`fov-grad-${cam.id}`} cx="0" cy="0" r="62" gradientUnits="userSpaceOnUse">
-                                <stop
-                                  offset="0%"
-                                  stopColor={isSelected ? '#38bdf8' : '#94a3b8'}
-                                  stopOpacity={isSelected ? '0.55' : '0.35'}
-                                />
-                                <stop
-                                  offset="100%"
-                                  stopColor={isSelected ? '#0284c7' : '#64748b'}
-                                  stopOpacity="0.0"
-                                />
-                              </radialGradient>
-                            </defs>
-                            <g transform={`rotate(${totalAngle})`}>
-                              <path
-                                d="M 0 0 L -28 -56 A 62 62 0 0 1 28 -56 Z"
-                                fill={`url(#fov-grad-${cam.id})`}
-                                stroke={isSelected ? 'rgba(56, 189, 248, 0.55)' : 'rgba(148, 163, 184, 0.25)'}
-                                strokeWidth="1"
-                              />
-                              <line
-                                x1="0"
-                                y1="0"
-                                x2="0"
-                                y2="-54"
-                                stroke={isSelected ? '#38bdf8' : '#94a3b8'}
-                                strokeWidth="1"
-                                strokeDasharray="3 3"
-                                opacity="0.65"
-                              />
-                            </g>
-                          </svg>
+                          <RotateCcw size={13} />
+                        </button>
+                      )}
+                    </div>
 
-                          <div
-                            className={`relative z-10 w-8 h-8 rounded-full flex items-center justify-center border-2 transition-transform ${
-                              isSelected
-                                ? 'bg-sky-600 text-white border-white shadow-lg scale-110'
-                                : 'bg-slate-900 text-sky-400 border-sky-400/80 hover:scale-110'
-                            }`}
-                          >
-                            <Video size={13} />
-                            <span
-                              className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-slate-950 ${
-                                cam.cameraType === 'dynamic' ? 'bg-amber-400' : 'bg-emerald-400'
-                              }`}
-                            />
-                          </div>
+                    <div className={`flex items-center gap-2 px-3 py-1 rounded-xl border text-xs ${themeSubCard}`}>
+                      <Compass size={14} className="text-sky-400" />
+                      <span>Азимут {currentCamera.code}:</span>
+                      <input
+                        type="range"
+                        min="-180"
+                        max="180"
+                        value={currentCamera.mapDirection || 0}
+                        onChange={(e) => adjustCameraMapDirection(e.target.value)}
+                        className="w-20 accent-sky-500 cursor-pointer"
+                      />
+                      <span className="font-mono font-bold w-9 text-right">
+                        {(currentCamera.mapDirection || 0) + (currentCamera.panAngle || 0)}°
+                      </span>
+                    </div>
 
-                          <span
-                            className={`absolute top-9 left-1/2 -translate-x-1/2 text-[10px] font-mono font-bold px-1.5 py-0.5 rounded whitespace-nowrap z-20 ${
-                              isSelected
-                                ? 'bg-sky-600 text-white shadow'
-                                : 'bg-slate-900/95 text-slate-300 border border-slate-700'
-                            }`}
-                          >
-                            {cam.code}
-                          </span>
-                        </div>
-                      );
-                    })}
+                    <label className={`px-3 py-1 rounded-xl text-xs font-semibold border flex items-center gap-1.5 cursor-pointer ${themeSubCard}`}>
+                      <ImageIcon size={13} className="text-sky-400" />
+                      <span>Чертеж</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleFloorplanUpload}
+                        className="hidden"
+                      />
+                    </label>
+
+                    <button
+                      onClick={() => setShowHeatmap(!showHeatmap)}
+                      className={`px-3 py-1 rounded-xl text-xs font-semibold border flex items-center gap-1.5 cursor-pointer ${
+                        showHeatmap ? 'bg-amber-600 text-white border-amber-600' : themeSubCard
+                      }`}
+                    >
+                      <Flame size={13} /> Тепловая карта
+                    </button>
                   </div>
                 </div>
 
-                <div className={`border rounded-2xl p-4 ${themeCard}`}>
-                  <div className="flex items-center justify-between mb-2.5">
-                    <h3 className="text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
-                      <Plus size={14} className="text-sky-500" />
-                      Регистрация новой камеры и участка
-                    </h3>
-                    {!currentUser.canEditRules && (
-                      <span className="text-xs text-red-500 font-medium flex items-center gap-1">
-                        <Lock size={12} /> Только для Специалиста по ОТ / ИТ
-                      </span>
-                    )}
-                  </div>
-
-                  <form
-                    onSubmit={handleAddCamera}
-                    className="grid grid-cols-1 sm:grid-cols-5 gap-2.5"
-                  >
-                    <input
-                      type="text"
-                      disabled={!currentUser.canEditRules}
-                      placeholder="Участок"
-                      value={newSiteInput}
-                      onChange={(e) => setNewSiteInput(e.target.value)}
-                      className={`text-xs rounded-xl px-3 py-2 border ${themeSubCard}`}
-                    />
-                    <input
-                      type="text"
-                      disabled={!currentUser.canEditRules}
-                      placeholder="Имя камеры"
-                      value={newCamInput}
-                      onChange={(e) => setNewCamInput(e.target.value)}
-                      className={`text-xs rounded-xl px-3 py-2 border ${themeSubCard}`}
-                    />
-                    <input
-                      type="text"
-                      disabled={!currentUser.canEditRules}
-                      placeholder="rtsp://… (необяз.)"
-                      value={newRtspInput}
-                      onChange={(e) => setNewRtspInput(e.target.value)}
-                      className={`text-xs rounded-xl px-3 py-2 border ${themeSubCard}`}
-                    />
-                    <select
-                      disabled={!currentUser.canEditRules}
-                      value={newCamTypeInput}
-                      onChange={(e) => setNewCamTypeInput(e.target.value)}
-                      className={`text-xs rounded-xl px-3 py-2 border font-medium ${themeSubCard}`}
-                    >
-                      <option value="dynamic">Динамичная PTZ</option>
-                      <option value="static">Статичная</option>
-                    </select>
-                    <button
-                      type="submit"
-                      disabled={!currentUser.canEditRules}
-                      className="bg-sky-600 hover:bg-sky-500 disabled:opacity-40 text-white font-semibold text-xs rounded-xl py-2 px-3 cursor-pointer transition"
-                    >
-                      + Добавить
-                    </button>
-                  </form>
+                <div className="mt-4 flex-1 flex flex-col">
+                  <UnifiedWorkshopMap
+                    cameras={cameras}
+                    selectedCamId={selectedCamId}
+                    onSelectCam={setSelectedCamId}
+                    onDoubleClickCam={(camId) => {
+                      setSelectedCamId(camId);
+                      setActiveTab('monitoring');
+                    }}
+                    onDragCamStart={setDraggingCamId}
+                    events={events}
+                    activeEvent={activeEvent}
+                    onSelectEvent={setSelectedEventId}
+                    showHeatmap={showHeatmap}
+                    floorplanBgUrl={floorplanBgUrl}
+                    mapZoom={mapZoom}
+                    mapPan={mapPan}
+                    isPanningMap={isPanningMap}
+                    onMapMouseDown={handleMapContainerMouseDown}
+                    onWheelZoom={handleWheelMapZoom}
+                    mapInnerRef={mapInnerRef}
+                    onMouseMove={handleMapMouseMove}
+                    onMouseUp={handleMapMouseUp}
+                    minHeightClass="min-h-[560px]"
+                  />
                 </div>
               </div>
 
-              {/* ПРАВАЯ КОЛОНКА (5 из 12): ПРАВИЛА КОНТРОЛЯ + АДАПТИВНЫЙ БЛОК JSONB (Светлый на светлой теме!) */}
+              {/* ПРАВАЯ КОЛОНКА (5 из 12): Правила контроля + Регистрация новой камеры и участка */}
               <div
-                className={`lg:col-span-5 border rounded-2xl p-5 flex flex-col gap-4 ${themeCard}`}
+                className={`lg:col-span-5 border rounded-2xl p-5 flex flex-col justify-between gap-5 ${themeCard}`}
               >
-                <div className="shrink-0">
+                <div>
                   <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-inherit">
-                    <div>
-                      <h2 className="text-sm font-bold">
-                        Правила контроля: {currentCamera.code}
-                      </h2>
-                      <p className={`text-xs ${textMuted}`}>
-                        Все 13 детекторов участка (кликните для переключения)
-                      </p>
-                    </div>
-                    <span className="text-xs font-mono font-bold px-2.5 py-1 rounded-lg bg-sky-500/15 text-sky-500">
+                    <h2 className="text-sm font-bold">
+                      Правила контроля: {currentCamera.code}
+                    </h2>
+                    <span className="text-xs font-mono font-bold px-2.5 py-1 rounded-lg bg-slate-500/15 text-sky-500">
                       Активно: {currentCamera.rulesVector.filter(Boolean).length}/{VIOLATION_TYPES.length}
                     </span>
                   </div>
@@ -3189,19 +2667,19 @@ function Dashboard({ user: currentUser, initial, onLogout }) {
                     <span className={`text-[11px] mr-1 ${textMuted}`}>Пресеты:</span>
                     <button
                       onClick={() => applyRulesPreset('all')}
-                      className={`text-[11px] px-2.5 py-1 rounded-lg border font-medium cursor-pointer ${themeSubCard} hover:border-sky-500`}
+                      className={`text-[11px] px-2.5 py-1 rounded-lg border font-medium cursor-pointer ${themeSubCard} hover:border-slate-500`}
                     >
-                      Включить все (13)
+                      Все детекторы
                     </button>
                     <button
                       onClick={() => applyRulesPreset('ppe_only')}
-                      className={`text-[11px] px-2.5 py-1 rounded-lg border font-medium cursor-pointer ${themeSubCard} hover:border-sky-500`}
+                      className={`text-[11px] px-2.5 py-1 rounded-lg border font-medium cursor-pointer ${themeSubCard} hover:border-slate-500`}
                     >
-                      Только СИЗ и падения
+                      СИЗ и падения
                     </button>
                     <button
                       onClick={() => applyRulesPreset('warehouse')}
-                      className={`text-[11px] px-2.5 py-1 rounded-lg border font-medium cursor-pointer ${themeSubCard} hover:border-sky-500`}
+                      className={`text-[11px] px-2.5 py-1 rounded-lg border font-medium cursor-pointer ${themeSubCard} hover:border-slate-500`}
                     >
                       Склад и техника
                     </button>
@@ -3216,12 +2694,12 @@ function Dashboard({ user: currentUser, initial, onLogout }) {
                           onClick={() => toggleRule(idx)}
                           className={`px-2.5 py-2 rounded-xl border flex items-center justify-between gap-2 cursor-pointer transition ${
                             active
-                              ? 'border-sky-500/80 bg-sky-500/10'
+                              ? 'border-sky-500/60 bg-sky-500/10'
                               : `${themeSubCard} opacity-60 hover:opacity-90`
                           }`}
                         >
                           <div className="flex items-center gap-2 min-w-0">
-                            <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-sky-600 text-white shrink-0">
+                            <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-700 text-slate-200 shrink-0">
                               {v.code}
                             </span>
                             <span className="text-[11px] font-medium truncate" title={v.name}>
@@ -3231,9 +2709,9 @@ function Dashboard({ user: currentUser, initial, onLogout }) {
                           <span
                             className={`text-[10px] font-bold px-2 py-0.5 rounded-md shrink-0 ${
                               active
-                                ? 'bg-emerald-600 text-white'
+                                ? 'bg-teal-600 text-white'
                                 : isDark
-                                ? 'bg-slate-700 text-slate-300'
+                                ? 'bg-slate-800 text-slate-400'
                                 : 'bg-slate-200 text-slate-600'
                             }`}
                           >
@@ -3245,215 +2723,154 @@ function Dashboard({ user: currentUser, initial, onLogout }) {
                   </div>
                 </div>
 
-                {/* АДАПТИВНЫЙ БЛОК JSONB (На светлой теме — светлый и аккуратный, на темной — темный!) */}
-                <div className="flex-1 flex flex-col pt-3 border-t border-inherit min-h-[200px]">
-                  <div className="flex items-center justify-between mb-2">
-                    <div>
-                      <span className="text-xs font-bold text-sky-500">
-                        Синхронизируемый объект JSONB (sites.rules)
+                <div className="pt-4 border-t border-inherit">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
+                      <Plus size={14} className="text-sky-400" />
+                      Регистрация новой камеры и участка
+                    </h3>
+                    {!currentUser.canEditRules && (
+                      <span className="text-xs text-rose-500 font-medium flex items-center gap-1">
+                        <Lock size={12} /> Только для ОТ / ИТ
                       </span>
-                      <p className={`text-[11px] ${textMuted}`}>
-                        Передается в PostgreSQL и ИИ-модуль LinQ TPU в реальном времени
-                      </p>
-                    </div>
-                    <button
-                      onClick={handleCopyJson}
-                      className={`px-2.5 py-1 rounded-lg border text-[11px] font-semibold flex items-center gap-1 cursor-pointer ${themeSubCard}`}
-                    >
-                      {copiedJson ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
-                      <span>{copiedJson ? 'Скопировано' : 'Копировать JSON'}</span>
-                    </button>
+                    )}
                   </div>
 
-                  <pre className={`flex-1 p-3.5 rounded-xl text-xs font-mono overflow-y-auto border leading-relaxed ${themeCodeBlock}`}>
-                    {formatCompactRulesJson({
-                      site_id: currentCamera.site_id,
-                      site_name: currentCamera.site_name,
-                      camera: currentCamera.code,
-                      camera_type: currentCamera.cameraType,
-                      direction_deg: (currentCamera.mapDirection || 0) + (currentCamera.panAngle || 0),
-                      vector: currentCamera.rulesVector,
-                      zones: currentCamera.zones.map((z) => ({
-                        label: z.label,
-                        type: z.type,
-                        shape: z.shape,
-                        schedule: z.schedule,
-                        coords: z.shape === 'rect' ? z.rect : z.points,
-                      })),
-                    })}
-                  </pre>
+                  <form
+                    onSubmit={handleAddCamera}
+                    className="grid grid-cols-1 sm:grid-cols-2 gap-3"
+                  >
+                    <input
+                      type="text"
+                      disabled={!currentUser.canEditRules}
+                      placeholder="Наименование участка"
+                      value={newSiteInput}
+                      onChange={(e) => setNewSiteInput(e.target.value)}
+                      className={`text-xs rounded-xl px-3.5 py-2.5 border ${themeSubCard}`}
+                    />
+                    <input
+                      type="text"
+                      disabled={!currentUser.canEditRules}
+                      placeholder="Наименование камеры"
+                      value={newCamInput}
+                      onChange={(e) => setNewCamInput(e.target.value)}
+                      className={`text-xs rounded-xl px-3.5 py-2.5 border ${themeSubCard}`}
+                    />
+                    <input
+                      type="text"
+                      disabled={!currentUser.canEditRules}
+                      placeholder="Адрес потока (rtsp://…)"
+                      value={newRtspInput}
+                      onChange={(e) => setNewRtspInput(e.target.value)}
+                      className={`text-xs rounded-xl px-3.5 py-2.5 border ${themeSubCard}`}
+                    />
+                    <select
+                      disabled={!currentUser.canEditRules}
+                      value={newCamTypeInput}
+                      onChange={(e) => setNewCamTypeInput(e.target.value)}
+                      className={`text-xs rounded-xl px-3.5 py-2.5 border font-medium ${themeSubCard}`}
+                    >
+                      <option value="dynamic">Динамичная PTZ</option>
+                      <option value="static">Статичная</option>
+                    </select>
+                    <button
+                      type="submit"
+                      disabled={!currentUser.canEditRules}
+                      className="sm:col-span-2 bg-sky-600 hover:bg-sky-500 disabled:opacity-40 text-white font-semibold text-xs rounded-xl py-2.5 px-4 cursor-pointer transition"
+                    >
+                      + Добавить камеру на карту цеха
+                    </button>
+                  </form>
                 </div>
               </div>
             </div>
           )}
 
-          {/* ================= ВКЛАДКА 4: АНАЛИТИКА, ИНСТРУКТАЖИ И ГОСТ (Без пустых дыр внутри карточек!) ================= */}
+          {/* ================= ВКЛАДКА 4: АНАЛИТИКА И ГОСТ ================= */}
           {activeTab === 'analytics' && (
             <div className="space-y-4">
-              {/* Верхний ряд KPI */}
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className={`border rounded-2xl p-4 ${themeCard}`}>
-                  <p className={`text-xs ${textMuted}`}>Скорость LinQ TPU</p>
-                  <p className="text-xl font-bold text-sky-500 mt-1">{currentCamera.fps} FPS</p>
+                  <p className={`text-xs ${textMuted}`}>Скорость обработки LinQ TPU</p>
+                  <p className="text-xl font-bold mt-1">{currentCamera.fps} FPS</p>
                   <p className={`text-[11px] mt-0.5 ${textMuted}`}>Отклик: {currentCamera.latency}</p>
                 </div>
                 <div className={`border rounded-2xl p-4 ${themeCard}`}>
                   <p className={`text-xs ${textMuted}`}>Всего событий в базе</p>
-                  <p className="text-xl font-bold text-red-500 mt-1">{events.length}</p>
-                  <p className={`text-[11px] mt-0.5 ${textMuted}`}>Подавлено дублей: 142</p>
+                  <p className="text-xl font-bold mt-1">{events.length}</p>
+                  <p className={`text-[11px] mt-0.5 ${textMuted}`}>Подтверждено ОТ: {confirmedEventsCount}</p>
                 </div>
                 <div className={`border rounded-2xl p-4 ${themeCard}`}>
                   <p className={`text-xs ${textMuted}`}>Выборка Active Learning</p>
-                  <p className="text-xl font-bold text-emerald-500 mt-1">{falseAlarmEvents.length} кадров</p>
-                  <p className={`text-[11px] mt-0.5 ${textMuted}`}>Готовы к дообучению .tpu</p>
-                </div>
-                <div
-                  onClick={() => setBriefingModalOpen(true)}
-                  className="border border-sky-500/40 bg-sky-500/10 hover:bg-sky-500/20 rounded-2xl p-4 cursor-pointer transition flex flex-col justify-between"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-sky-500">ИИ-Инструктаж смены</span>
-                    <GraduationCap size={18} className="text-sky-500" />
-                  </div>
-                  <p className="text-xs font-semibold mt-1">
-                    Сформировать 5-минутный инструктаж по реальным случаям →
-                  </p>
+                  <p className="text-xl font-bold text-teal-500 mt-1">{falseAlarmEvents.length} кадров</p>
+                  <p className={`text-[11px] mt-0.5 ${textMuted}`}>Отмеченные ложные срабатывания</p>
                 </div>
               </div>
 
-              {/* Средний ряд: Почасовой график + Калькулятор (Плотная верстка без огромного пустого промежутка!) */}
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
-                <div className={`lg:col-span-7 border rounded-2xl p-5 space-y-4 ${themeCard}`}>
-                  <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-inherit">
-                    <div>
-                      <h2 className="text-sm font-bold">
-                        Динамика нарушений по часам смены
-                      </h2>
-                      <p className={`text-xs ${textMuted}`}>
-                        Отчетность по Приказу Ростехнадзора от 11.12.2020 № 518
-                      </p>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <button
-                        onClick={() => setShowGostPreviewModal(true)}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold cursor-pointer ${themeSubCard}`}
-                      >
-                        <FileText size={14} className="text-sky-500" /> Форма № 518
-                      </button>
-                      <button
-                        onClick={() => window.print()}
-                        className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold cursor-pointer shadow-xs"
-                      >
-                        <FileDown size={14} /> Скачать PDF (ГОСТ)
-                      </button>
-                    </div>
+              <div className={`border rounded-2xl p-5 space-y-4 ${themeCard}`}>
+                <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-inherit">
+                  <div>
+                    <h2 className="text-sm font-bold">
+                      Динамика нарушений по часам смены
+                    </h2>
+                    <p className={`text-xs ${textMuted}`}>
+                      Отчетность по Приказу Ростехнадзора от 11.12.2020 № 518
+                    </p>
                   </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      onClick={() => setShowGostPreviewModal(true)}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold cursor-pointer ${themeSubCard}`}
+                    >
+                      <FileText size={14} className="text-sky-500" /> Форма № 518
+                    </button>
+                    <button
+                      onClick={() => window.print()}
+                      className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold cursor-pointer shadow-xs"
+                    >
+                      <FileDown size={14} /> Скачать PDF (ГОСТ)
+                    </button>
+                  </div>
+                </div>
 
-                  {/* Столбцы почасовой статистики без пустого растягивания */}
-                  <div className="grid grid-cols-7 gap-3 pt-1">
-                    {hourlyStats.map((item, i) => {
-                      const heightPct = Math.round((item.count / 15) * 100);
-                      return (
-                        <div key={i} className="flex flex-col items-center">
-                          <div
-                            className={`h-36 w-full flex flex-col justify-end items-center border-b pb-2 ${
-                              isDark ? 'border-slate-700' : 'border-slate-200'
+                {/* Все цифры над столбцами имеют единый стандартный читаемый цвет на светлой и темной теме! */}
+                <div className="grid grid-cols-7 gap-4 pt-2">
+                  {hourlyStats.map((item, i) => {
+                    const heightPct = Math.round((item.count / 15) * 100);
+                    const isPeak = item.count >= 11;
+                    return (
+                      <div key={i} className="flex flex-col items-center">
+                        <div
+                          className={`h-40 w-full flex flex-col justify-end items-center border-b pb-2 ${
+                            isDark ? 'border-slate-800' : 'border-slate-200'
+                          }`}
+                        >
+                          <span
+                            className={`text-xs font-mono font-bold px-2 py-0.5 rounded-md mb-1.5 border ${
+                              isDark
+                                ? 'bg-slate-800 text-slate-100 border-slate-700'
+                                : 'bg-slate-100 text-slate-800 border-slate-200'
                             }`}
                           >
-                            <span className="text-xs font-bold mb-1 text-sky-500">
-                              {item.count}
-                            </span>
-                            <div
-                              style={{ height: `${heightPct}%` }}
-                              className={`w-9 max-w-full rounded-t-lg transition-all ${
-                                item.count >= 11 ? 'bg-red-500' : 'bg-sky-500'
-                              }`}
-                            />
-                          </div>
-                          <p className="text-xs font-bold mt-2 text-center">{item.hour}</p>
-                          <p className={`text-[11px] text-center leading-tight mt-0.5 ${textMuted}`}>
-                            {item.label}
-                          </p>
+                            {item.count}
+                          </span>
+                          <div
+                            style={{ height: `${heightPct}%` }}
+                            className={`w-11 max-w-full rounded-t-lg transition-all ${
+                              isPeak ? 'bg-amber-500/85' : 'bg-sky-600/80'
+                            }`}
+                          />
                         </div>
-                      );
-                    })}
-                  </div>
-
-                  {/* Компактная разбивка по категориям нарушений внизу графика */}
-                  <div className={`pt-3 border-t grid grid-cols-3 gap-3 text-xs ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
-                    <div className={`p-2.5 rounded-xl border ${themeSubCard}`}>
-                      <span className={textMuted}>Отсутствие СИЗ (09–13)</span>
-                      <p className="text-sm font-bold text-amber-500 mt-0.5">44% всех случаев</p>
-                    </div>
-                    <div className={`p-2.5 rounded-xl border ${themeSubCard}`}>
-                      <span className={textMuted}>Опасные зоны и техника</span>
-                      <p className="text-sm font-bold text-red-500 mt-0.5">38% всех случаев</p>
-                    </div>
-                    <div className={`p-2.5 rounded-xl border ${themeSubCard}`}>
-                      <span className={textMuted}>Дисциплина и смартфон</span>
-                      <p className="text-sm font-bold text-sky-500 mt-0.5">18% всех случаев</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className={`lg:col-span-5 border rounded-2xl p-5 space-y-4 ${themeCard}`}>
-                  <h2 className="text-sm font-bold pb-3 border-b border-inherit flex items-center gap-2">
-                    <Sliders size={16} className="text-sky-500" />
-                    Калькулятор кластера LinQ TPU
-                  </h2>
-
-                  <div className={`p-3.5 rounded-xl border ${themeSubCard}`}>
-                    <div className="flex justify-between text-xs font-semibold mb-2">
-                      <span>Масштаб внедрения:</span>
-                      <span className="text-sky-500 font-bold text-sm">
-                        {clusterCamerasCount} камер
-                      </span>
-                    </div>
-                    <input
-                      type="range"
-                      min="5"
-                      max="100"
-                      value={clusterCamerasCount}
-                      onChange={(e) => setClusterCamerasCount(Number(e.target.value))}
-                      className="w-full accent-sky-600 cursor-pointer"
-                    />
-                    <div className={`flex justify-between text-[10px] mt-1 ${textMuted}`}>
-                      <span>5 камер (100 м²)</span>
-                      <span>50 камер (Цех)</span>
-                      <span>100 камер (10 000 м²)</span>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className={`p-3 rounded-xl border ${themeSubCard}`}>
-                      <p className={`text-[11px] ${textMuted}`}>Узлов ускорителей LinQ</p>
-                      <p className="text-lg font-bold mt-0.5 text-sky-500">
-                        {Math.ceil(clusterCamerasCount / 16)} шт. (INT8)
-                      </p>
-                    </div>
-                    <div className={`p-3 rounded-xl border ${themeSubCard}`}>
-                      <p className={`text-[11px] ${textMuted}`}>Суммарный поток</p>
-                      <p className="text-lg font-bold mt-0.5">
-                        {clusterCamerasCount * 25} FPS
-                      </p>
-                    </div>
-                    <div className={`p-3 rounded-xl border ${themeSubCard}`}>
-                      <p className={`text-[11px] ${textMuted}`}>Снижение травматизма</p>
-                      <p className="text-lg font-bold mt-0.5 text-emerald-500">
-                        до -78% в год
-                      </p>
-                    </div>
-                    <div className={`p-3 rounded-xl border ${themeSubCard}`}>
-                      <p className={`text-[11px] ${textMuted}`}>Энергопотребление</p>
-                      <p className="text-lg font-bold mt-0.5">
-                        до 75 Вт (Edge)
-                      </p>
-                    </div>
-                  </div>
+                        <p className="text-xs font-bold mt-2 text-center">{item.hour}</p>
+                        <p className={`text-[11px] text-center leading-tight mt-0.5 ${textMuted}`}>
+                          {item.label}
+                        </p>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 
-              {/* Active Learning */}
               <div className={`border rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4 ${themeCard}`}>
                 <div>
                   <h3 className="text-sm font-bold flex items-center gap-2">
@@ -3461,7 +2878,7 @@ function Dashboard({ user: currentUser, initial, onLogout }) {
                     Контур дообучения нейросети (Active Learning)
                   </h3>
                   <p className={`text-xs mt-0.5 ${textMuted}`}>
-                    Отмеченные красной кнопкой «Ложное» кадры ({falseAlarmEvents.length} шт.) выгружаются в ZIP-архив для дообучения модели
+                    Отмеченные кнопкой «Ложное» кадры ({falseAlarmEvents.length} шт.) выгружаются в архив для дообучения модели
                   </p>
                 </div>
                 <button
@@ -3477,7 +2894,6 @@ function Dashboard({ user: currentUser, initial, onLogout }) {
                 </button>
               </div>
 
-              {/* Сводная ведомость */}
               <div className={`border rounded-2xl p-5 ${themeCard}`}>
                 <h3 className="text-sm font-bold mb-3">
                   Сводная ведомость по производственным участкам
@@ -3492,21 +2908,19 @@ function Dashboard({ user: currentUser, initial, onLogout }) {
                         <th className="p-3">Инцидентов</th>
                         <th className="p-3">Подтверждено ОТ</th>
                         <th className="p-3">Точность ИИ</th>
-                        <th className="p-3">Рекомендация ИИ</th>
                       </tr>
                     </thead>
                     <tbody className={`divide-y ${themeTableWrap}`}>
                       {cameraSummary(cameras, events).map((r) => (
-                        <tr key={r.id} className="hover:bg-sky-500/5">
+                        <tr key={r.id} className="hover:bg-slate-500/5">
                           <td className="p-3 font-semibold">{r.site}</td>
-                          <td className="p-3">{r.code}</td>
-                          <td className="p-3 text-red-500 font-medium">{r.top || '—'}</td>
+                          <td className="p-3 font-mono">{r.code}</td>
+                          <td className="p-3 font-medium">{r.top || '—'}</td>
                           <td className="p-3 font-bold">{r.total}</td>
                           <td className="p-3">{r.confirmed}</td>
-                          <td className="p-3 text-emerald-500 font-bold">
-                            {r.reviewed > 0 ? `${Math.round((r.confirmed / r.reviewed) * 100)}%` : '96%'}
+                          <td className="p-3 text-teal-500 font-bold">
+                            {r.reviewed > 0 ? `${Math.round((r.confirmed / r.reviewed) * 100)}%` : '95%'}
                           </td>
-                          <td className="p-3">{r.advice}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -3516,20 +2930,14 @@ function Dashboard({ user: currentUser, initial, onLogout }) {
             </div>
           )}
 
-          {/* ================= ВКЛАДКА 5: ИНСПЕКТОР СУБД (Без пустых разрывов и с адаптивной светлой/темной темой!) ================= */}
+          {/* ================= ВКЛАДКА 5: СУБД ================= */}
           {activeTab === 'db_inspector' && (
-            <div className={`border rounded-2xl p-5 space-y-5 ${themeCard}`}>
-              {/* Заголовок + Экспорт CSV */}
-              <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-inherit">
-                <div>
-                  <h2 className="text-base font-bold flex items-center gap-2">
-                    <Database size={18} className="text-sky-500" />
-                    Инспектор реляционной СУБД PostgreSQL
-                  </h2>
-                  <p className={`text-xs ${textMuted}`}>
-                    Выберите любую таблицу схемы для просмотра живых записей и связей
-                  </p>
-                </div>
+            <div className={`border rounded-2xl p-5 flex-1 flex flex-col space-y-5 min-h-[calc(100vh-110px)] ${themeCard}`}>
+              <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-inherit shrink-0">
+                <h2 className="text-base font-bold flex items-center gap-2">
+                  <Database size={18} className="text-sky-500" />
+                  Инспектор реляционной СУБД PostgreSQL
+                </h2>
 
                 <div className="flex flex-wrap items-center gap-2">
                   <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs ${themeSubCard}`}>
@@ -3539,7 +2947,7 @@ function Dashboard({ user: currentUser, initial, onLogout }) {
                       value={dbSearchQuery}
                       onChange={(e) => setDbSearchQuery(e.target.value)}
                       placeholder="Фильтр записей..."
-                      className="bg-transparent focus:outline-none w-36"
+                      className="bg-transparent focus:outline-none w-40"
                     />
                   </div>
                   <button
@@ -3548,14 +2956,10 @@ function Dashboard({ user: currentUser, initial, onLogout }) {
                   >
                     <Download size={13} /> Выгрузить CSV
                   </button>
-                  <span className="text-xs font-mono px-3 py-1.5 rounded-xl bg-emerald-500/15 text-emerald-500 font-semibold">
-                    PostgreSQL 16 • Активно
-                  </span>
                 </div>
               </div>
 
-              {/* 5 карточек таблиц */}
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 shrink-0">
                 {[
                   { id: 'events', table: 'events', pk: 'id (PK), camera_id (FK)', count: `${events.length} записей` },
                   { id: 'cameras', table: 'cameras', pk: 'id (PK), site_id (FK)', count: `${cameras.length} камеры` },
@@ -3570,8 +2974,8 @@ function Dashboard({ user: currentUser, initial, onLogout }) {
                       onClick={() => setActiveDbTable(tb.id)}
                       className={`p-3.5 rounded-xl border cursor-pointer transition flex flex-col justify-between ${
                         isSelected
-                          ? 'border-sky-500 bg-sky-500/10 ring-1 ring-sky-500'
-                          : `${themeSubCard} hover:border-slate-400`
+                          ? 'border-sky-500 bg-sky-500/10'
+                          : `${themeSubCard} hover:border-slate-500`
                       }`}
                     >
                       <div className="flex items-center justify-between">
@@ -3582,32 +2986,30 @@ function Dashboard({ user: currentUser, initial, onLogout }) {
                           {tb.count}
                         </span>
                       </div>
-                      <p className="text-[11px] font-mono text-amber-500 mt-2">{tb.pk}</p>
+                      <p className={`text-[11px] font-mono mt-2 ${textMuted}`}>{tb.pk}</p>
                     </div>
                   );
                 })}
               </div>
 
-              {/* Таблица выбранной сущности (Плотно, без пустого разрыва под ней!) */}
-              <div>
-                <h3 className="text-xs font-bold uppercase tracking-wider mb-2 flex items-center justify-between">
-                  <span>SELECT * FROM public.{activeDbTable} ORDER BY id DESC;</span>
-                  <span className={`font-mono text-[11px] ${textMuted}`}>Связь с ИИ-модулем и веб-клиентом</span>
+              <div className="flex-1 flex flex-col">
+                <h3 className="text-xs font-bold uppercase tracking-wider mb-2.5">
+                  SELECT * FROM public.{activeDbTable} ORDER BY id DESC;
                 </h3>
 
-                {activeDbTable === 'events' && (
-                  <div className={`overflow-x-auto rounded-xl border ${themeTableWrap}`}>
+                <div className={`flex-1 rounded-xl border overflow-x-auto ${themeTableWrap}`}>
+                  {activeDbTable === 'events' && (
                     <table className="w-full text-left text-xs font-mono">
                       <thead className={themeTableHead}>
                         <tr>
-                          <th className="p-3">id (PK)</th>
-                          <th className="p-3">camera_id (FK)</th>
-                          <th className="p-3">violation (enum)</th>
-                          <th className="p-3">timestamp</th>
-                          <th className="p-3">status</th>
-                          <th className="p-3">processed_by</th>
-                          <th className="p-3">confidence</th>
-                          <th className="p-3">description</th>
+                          <th className="p-3.5">id (PK)</th>
+                          <th className="p-3.5">camera_id (FK)</th>
+                          <th className="p-3.5">violation (enum)</th>
+                          <th className="p-3.5">timestamp</th>
+                          <th className="p-3.5">status</th>
+                          <th className="p-3.5">processed_by</th>
+                          <th className="p-3.5">confidence</th>
+                          <th className="p-3.5">description</th>
                         </tr>
                       </thead>
                       <tbody className={`divide-y ${themeTableWrap}`}>
@@ -3618,181 +3020,118 @@ function Dashboard({ user: currentUser, initial, onLogout }) {
                               : JSON.stringify(ev).toLowerCase().includes(dbSearchQuery.toLowerCase())
                           )
                           .map((ev) => (
-                            <tr key={ev.id} className="hover:bg-sky-500/5">
-                              <td className="p-3 font-bold">{ev.id}</td>
-                              <td className="p-3">{ev.camera_id} ({ev.camera_code})</td>
-                              <td className="p-3 text-red-500 font-semibold">{ev.violation}</td>
-                              <td className="p-3 whitespace-nowrap">{ev.timestamp}</td>
-                              <td className="p-3 font-semibold">{ev.status}</td>
-                              <td className="p-3">{ev.processed_by_name}</td>
-                              <td className="p-3 text-emerald-500 font-bold">{ev.confidence}</td>
-                              <td className="p-3 max-w-xs truncate">{ev.description}</td>
+                            <tr key={ev.id} className="hover:bg-slate-500/5">
+                              <td className="p-3.5 font-bold">{ev.id}</td>
+                              <td className="p-3.5">{ev.camera_id} ({ev.camera_code})</td>
+                              <td className="p-3.5 font-semibold text-amber-500">{ev.violation}</td>
+                              <td className="p-3.5 whitespace-nowrap">{ev.timestamp}</td>
+                              <td className="p-3.5 font-semibold">{ev.status}</td>
+                              <td className="p-3.5">{ev.processed_by_name}</td>
+                              <td className="p-3.5 text-teal-500 font-bold">{ev.confidence}</td>
+                              <td className="p-3.5">{ev.description}</td>
                             </tr>
                           ))}
                       </tbody>
                     </table>
-                  </div>
-                )}
+                  )}
 
-                {activeDbTable === 'cameras' && (
-                  <div className={`overflow-x-auto rounded-xl border ${themeTableWrap}`}>
+                  {activeDbTable === 'cameras' && (
                     <table className="w-full text-left text-xs font-mono">
                       <thead className={themeTableHead}>
                         <tr>
-                          <th className="p-3">id (PK)</th>
-                          <th className="p-3">code</th>
-                          <th className="p-3">site_id (FK)</th>
-                          <th className="p-3">name</th>
-                          <th className="p-3">camera_type</th>
-                          <th className="p-3">rtsp_url</th>
-                          <th className="p-3">fps</th>
+                          <th className="p-3.5">id (PK)</th>
+                          <th className="p-3.5">code</th>
+                          <th className="p-3.5">site_id (FK)</th>
+                          <th className="p-3.5">name</th>
+                          <th className="p-3.5">camera_type</th>
+                          <th className="p-3.5">rtsp_url</th>
+                          <th className="p-3.5">fps</th>
                         </tr>
                       </thead>
                       <tbody className={`divide-y ${themeTableWrap}`}>
                         {cameras.map((c) => (
-                          <tr key={c.id} className="hover:bg-sky-500/5">
-                            <td className="p-3 font-bold">{c.id}</td>
-                            <td className="p-3 text-sky-500 font-bold">{c.code}</td>
-                            <td className="p-3">{c.site_id}</td>
-                            <td className="p-3">{c.name}</td>
-                            <td className="p-3">{c.cameraType}</td>
-                            <td className={`p-3 ${textMuted}`}>{c.rtsp_url}</td>
-                            <td className="p-3 text-emerald-500 font-bold">{c.fps}</td>
+                          <tr key={c.id} className="hover:bg-slate-500/5">
+                            <td className="p-3.5 font-bold">{c.id}</td>
+                            <td className="p-3.5 text-sky-500 font-bold">{c.code}</td>
+                            <td className="p-3.5">{c.site_id}</td>
+                            <td className="p-3.5">{c.name}</td>
+                            <td className="p-3.5">{c.cameraType}</td>
+                            <td className={`p-3.5 ${textMuted}`}>{c.rtsp_url || '—'}</td>
+                            <td className="p-3.5 text-teal-500 font-bold">{c.fps}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
-                  </div>
-                )}
+                  )}
 
-                {activeDbTable === 'sites' && (
-                  <div className={`overflow-x-auto rounded-xl border ${themeTableWrap}`}>
+                  {activeDbTable === 'sites' && (
                     <table className="w-full text-left text-xs font-mono">
                       <thead className={themeTableHead}>
                         <tr>
-                          <th className="p-3">id (PK)</th>
-                          <th className="p-3">name (Производственный участок)</th>
-                          <th className="p-3">rules (JSONB вектор и зоны)</th>
-                          <th className="p-3">created_at</th>
+                          <th className="p-3.5">id (PK)</th>
+                          <th className="p-3.5">name</th>
+                          <th className="p-3.5">rules (JSONB)</th>
+                          <th className="p-3.5">created_at</th>
                         </tr>
                       </thead>
                       <tbody className={`divide-y ${themeTableWrap}`}>
                         {cameras.map((c) => (
-                          <tr key={c.site_id} className="hover:bg-sky-500/5">
-                            <td className="p-3 font-bold">{c.site_id}</td>
-                            <td className="p-3 font-semibold">{c.site_name}</td>
-                            <td className="p-3 text-sky-500">
-                              vector: [{c.rulesVector.join(',')}], zones: {c.zones.length}
+                          <tr key={c.id} className="hover:bg-slate-500/5">
+                            <td className="p-3.5 font-bold">{c.site_id}</td>
+                            <td className="p-3.5 font-semibold">{c.site_name}</td>
+                            <td className="p-3.5 text-sky-500">
+                              vector: [{c.rulesVector.join(', ')}], zones: {c.zones.length}
                             </td>
-                            <td className="p-3">{c.created_at}</td>
+                            <td className="p-3.5">{c.created_at}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
-                  </div>
-                )}
+                  )}
 
-                {activeDbTable === 'users' && (
-                  <div className={`overflow-x-auto rounded-xl border ${themeTableWrap}`}>
+                  {activeDbTable === 'users' && (
                     <table className="w-full text-left text-xs font-mono">
                       <thead className={themeTableHead}>
                         <tr>
-                          <th className="p-3">id (PK)</th>
-                          <th className="p-3">login (UK)</th>
-                          <th className="p-3">full_name</th>
-                          <th className="p-3">role_id (FK)</th>
-                          <th className="p-3">can_edit_rules</th>
+                          <th className="p-3.5">id (PK)</th>
+                          <th className="p-3.5">login (UK)</th>
+                          <th className="p-3.5">full_name</th>
+                          <th className="p-3.5">role_id (FK)</th>
+                          <th className="p-3.5">can_edit_rules</th>
                         </tr>
                       </thead>
                       <tbody className={`divide-y ${themeTableWrap}`}>
                         {DB_USERS.map((u) => (
-                          <tr key={u.id} className="hover:bg-sky-500/5">
-                            <td className="p-3 font-bold">{u.id}</td>
-                            <td className="p-3 text-sky-500">{u.login}</td>
-                            <td className="p-3">{u.full_name} ({u.position})</td>
-                            <td className="p-3">{u.role_id} ({u.role_name})</td>
-                            <td className="p-3 text-emerald-500 font-bold">{String(u.canEditRules)}</td>
+                          <tr key={u.id} className="hover:bg-slate-500/5">
+                            <td className="p-3.5 font-bold">{u.id}</td>
+                            <td className="p-3.5 text-sky-500">{u.login}</td>
+                            <td className="p-3.5">{u.full_name} ({u.position})</td>
+                            <td className="p-3.5">{u.role_id} ({u.role_name})</td>
+                            <td className="p-3.5 text-teal-500 font-bold">{String(u.canEditRules)}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
-                  </div>
-                )}
+                  )}
 
-                {activeDbTable === 'roles' && (
-                  <div className={`overflow-x-auto rounded-xl border ${themeTableWrap}`}>
+                  {activeDbTable === 'roles' && (
                     <table className="w-full text-left text-xs font-mono">
                       <thead className={themeTableHead}>
                         <tr>
-                          <th className="p-3">id (PK)</th>
-                          <th className="p-3">name (Наименование роли и полномочия)</th>
+                          <th className="p-3.5">id (PK)</th>
+                          <th className="p-3.5">name</th>
                         </tr>
                       </thead>
                       <tbody className={`divide-y ${themeTableWrap}`}>
                         {DB_ROLES.map((r) => (
-                          <tr key={r.id} className="hover:bg-sky-500/5">
-                            <td className="p-3 font-bold">{r.id}</td>
-                            <td className="p-3">{r.name}</td>
+                          <tr key={r.id} className="hover:bg-slate-500/5">
+                            <td className="p-3.5 font-bold">{r.id}</td>
+                            <td className="p-3.5">{r.name}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
-                  </div>
-                )}
-              </div>
-
-              {/* Сбалансированный нижний ряд из 2 колонок: JSONB документ слева + Журнал SQL/REST транзакций справа */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <div className={`p-4 rounded-xl border ${themeSubCard}`}>
-                  <div className="flex items-center justify-between mb-2">
-                    <p className="text-xs font-bold">
-                      Актуальный документ JSONB (sites.rules • {currentCamera.code}):
-                    </p>
-                    <button
-                      onClick={handleCopyJson}
-                      className={`px-2 py-0.5 rounded border text-[11px] font-semibold flex items-center gap-1 cursor-pointer ${themeCard}`}
-                    >
-                      {copiedJson ? <Check size={11} className="text-emerald-500" /> : <Copy size={11} />}
-                      <span>{copiedJson ? 'Скопировано' : 'Копировать'}</span>
-                    </button>
-                  </div>
-                  <pre className={`p-3 rounded-xl text-xs font-mono overflow-x-auto border max-h-48 ${themeCodeBlock}`}>
-                    {formatCompactRulesJson({
-                      site_id: currentCamera.site_id,
-                      site_name: currentCamera.site_name,
-                      camera_type: currentCamera.cameraType,
-                      vector: currentCamera.rulesVector,
-                      zones: currentCamera.zones,
-                    })}
-                  </pre>
-                </div>
-
-                <div className={`p-4 rounded-xl border flex flex-col justify-between ${themeSubCard}`}>
-                  <div>
-                    <p className="text-xs font-bold mb-2">
-                      Журнал синхронизации REST API и транзакций PostgreSQL:
-                    </p>
-                    <div className={`p-3 rounded-xl border font-mono text-[11px] space-y-1.5 ${themeCodeBlock}`}>
-                      <div>[SYNC] PATCH /api/cameras/{currentCamera.id} → 200 OK (sites.rules JSONB updated)</div>
-                      <div>[POLL] GET /api/events?after_id=0 → {events.length} rows fetched (3.2 ms)</div>
-                      <div>[TPU] Bridge heartbeat {currentCamera.code}: {currentCamera.fps} FPS, INT8 active</div>
-                      <div>[AUTH] Session verified for role_id={currentUser.role_id} ({currentUser.login})</div>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2 mt-3 text-xs">
-                    <div className={`p-2 rounded-lg border ${themeCard}`}>
-                      <span className={`text-[10px] ${textMuted}`}>Индекс GIN (JSONB)</span>
-                      <p className="font-bold text-emerald-500">Активен (0.4 мс)</p>
-                    </div>
-                    <div className={`p-2 rounded-lg border ${themeCard}`}>
-                      <span className={`text-[10px] ${textMuted}`}>Пул соединений</span>
-                      <p className="font-bold text-sky-500">psycopg3 • ОК</p>
-                    </div>
-                    <div className={`p-2 rounded-lg border ${themeCard}`}>
-                      <span className={`text-[10px] ${textMuted}`}>Архив кадров</span>
-                      <p className="font-bold">{events.length} файлов</p>
-                    </div>
-                  </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -3807,15 +3146,15 @@ function LoginScreen({ onLogin, error }) {
   const [login, setLogin] = useState('mikhalyich_ot');
   const [password, setPassword] = useState('linq123');
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-900 text-white font-sans p-4">
+    <div className="min-h-screen flex items-center justify-center bg-[#0D131F] text-white font-sans p-4">
       <form
         onSubmit={(e) => {
           e.preventDefault();
           onLogin(login, password);
         }}
-        className="w-full max-w-sm space-y-4 bg-slate-800/90 border border-slate-700 rounded-2xl p-6 shadow-2xl"
+        className="w-full max-w-sm space-y-4 bg-[#151E2E] border border-slate-800 rounded-2xl p-6 shadow-2xl"
       >
-        <div className="flex items-center gap-3 border-b border-slate-700 pb-3">
+        <div className="flex items-center gap-3 border-b border-slate-800 pb-3">
           <LinQExactLogo isDark={true} />
           <div>
             <h1 className="text-base font-bold">LinQ — Вход в систему</h1>
@@ -3830,7 +3169,7 @@ function LoginScreen({ onLogin, error }) {
             onChange={(e) => setLogin(e.target.value)}
             placeholder="Логин"
             autoFocus
-            className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-600 text-white text-sm focus:outline-none focus:border-sky-500"
+            className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white text-sm focus:outline-none focus:border-sky-500"
           />
         </div>
 
@@ -3841,17 +3180,17 @@ function LoginScreen({ onLogin, error }) {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Пароль"
-            className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-600 text-white text-sm focus:outline-none focus:border-sky-500"
+            className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white text-sm focus:outline-none focus:border-sky-500"
           />
         </div>
 
-        {error && <p className="text-xs text-red-400 font-medium">{error}</p>}
+        {error && <p className="text-xs text-rose-400 font-medium">{error}</p>}
 
         <button className="w-full py-2.5 rounded-lg bg-sky-600 hover:bg-sky-500 font-semibold cursor-pointer text-sm shadow transition">
           Войти
         </button>
 
-        <div className="pt-2 border-t border-slate-700/80 text-[11px] text-slate-400 space-y-1">
+        <div className="pt-2 border-t border-slate-800 text-[11px] text-slate-400 space-y-1">
           <p className="font-semibold text-slate-300">Быстрый выбор роли (пароль linq123):</p>
           <div className="flex flex-wrap gap-1 mt-1">
             {['mikhalyich_ot', 'master_ceh1', 'disp_smena1', 'it_linq_admin'].map((u) => (
@@ -3862,7 +3201,7 @@ function LoginScreen({ onLogin, error }) {
                   setLogin(u);
                   setPassword('linq123');
                 }}
-                className="px-1.5 py-0.5 rounded bg-slate-700/70 hover:bg-slate-700 text-sky-400 cursor-pointer font-mono"
+                className="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-sky-400 cursor-pointer font-mono"
               >
                 {u}
               </button>
@@ -3889,10 +3228,7 @@ export default function App() {
       cameras: INITIAL_CAMERAS_FALLBACK,
       events: INITIAL_EVENTS_FALLBACK,
       settings: {
-        enhanceFilter: false,
-        stabilizeZonesOnPTZ: true,
         sirenEnabled: true,
-        skudLockEnabled: false,
       },
     };
     setSession({ user: matchedUser, initial: initialData });
