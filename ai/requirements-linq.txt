@@ -1,0 +1,11 @@
+# Рантайм на сервере LinQ (среда TPU уже установлена там). Только лёгкие зависимости.
+# numpy<2: окружение сервера (tpu-pycloud-format, numba, matplotlib) собрано под numpy 1.x —
+# свежий opencv тянет numpy 2 и ломает его, поэтому версия opencv ограничена.
+numpy<2
+opencv-python-headless<4.11
+pyyaml
+scipy<1.14
+pillow
+# для HTTP API (python -m safetyvision serve):
+fastapi
+uvicorn

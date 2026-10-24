@@ -1,0 +1,34 @@
+# Проверка карты по двум камерам на одно помещение: CAVIAR (EC Funded CAVIAR project/IST 2001 37540),
+# торговый коридор в Лиссабоне, виды «cor» (вдоль коридора) и «front» (поперёк).
+# По штампу времени в кадре «front» начинается на 3.12 с раньше «cor» — сдвиг задаёт start_offset_s.
+#   python -m safetyvision calibrate configs/caviar_2cam.yaml --seconds 200
+#   python -m safetyvision run configs/caviar_2cam.yaml --save-video runs/caviar/demo.mp4
+site:
+  id: caviar
+  name: "CAVIAR — коридор"
+  map: {size_m: [30, 20], px_per_m: 20, auto_fit: true}
+  rules: {running: 1, danger_zone: 1, fall: 1}
+
+models:
+  backend: onnx
+  pose: {spec: ../models/pose_v8n_384x640.json, conf: 0.3}
+
+cameras:
+  - id: cor
+    name: "Коридор"
+    source: ../data/videos/caviar/ThreePastShop1cor.mpg
+    process_fps: 8
+    calibration: {auto: {person_height_m: 1.7}, placement: {x: 0, y: 0, yaw_deg: 0}}
+  - id: front
+    name: "Фронт"
+    source: ../data/videos/caviar/ThreePastShop1front.mpg
+    process_fps: 8
+    start_offset_s: -3.12
+    # люди здесь идут поперёк кадра почти на одном расстоянии — фокус по ним не определить.
+    # Камеры одной модели, поэтому угол обзора берём как у «cor» (f=461 px при ширине 384 → 45°).
+    calibration: {auto: {person_height_m: 1.7, hfov_deg: 45, min_obs: 35, every_s: 0.2}, align_to: cor}
+
+events:
+  output_dir: ../runs/caviar
+  pre_roll_s: 2
+  post_roll_s: 1

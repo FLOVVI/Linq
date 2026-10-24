@@ -1,0 +1,80 @@
+# Демо: одно помещение (цех), 2–3 камеры. Карта строится автоматически:
+#   1) каждая камера калибруется по проходящим людям (рост ~1.7 м) — без ручной разметки;
+#   2) камеры cam2/cam3 совмещаются с cam1 по одновременным положениям людей (RANSAC);
+#   3) из кадров собирается вид сверху, видны зоны обзора и слепые зоны.
+# Если есть план цеха — укажите map.background и calibration.image_points/map_points (≥4 точки).
+site:
+  id: shop1
+  name: "Цех №1"
+  map:
+    size_m: [24, 18]
+    px_per_m: 25
+    auto_fit: true
+    # room: [[0,0],[24,0],[24,18],[0,18]]   # контур помещения — для поиска слепых зон
+  # на всей площадке: каска, жилет, бег, падение, огонь, курение, телефон
+  rules: {helmet: 1, vest: 1, smoking: 1, phone: 1, running: 1, fall: 1, fire: 1, vehicle_proximity: 1}
+  rule_params:
+    running: {speed_mps: 2.3}
+    vehicle_proximity: {distance_m: 2.5}
+
+models:
+  backend: onnx   # на сервере LinQ: --backend tpu
+  pose: {spec: ../models/pose_v8n_384x640.json, conf: 0.35}
+  ppe: {spec: ../models/ppe_sh17s_384x640.json, conf: 0.3, every_n: 2}
+  # проверка головы перед тревогой «нет каски»: вырезка 96×96 -> каска / без каски.
+  # Всегда на CPU: int8-квантование ломает этот классификатор (точность 0.57 против 0.98, см. AI.md)
+  helmet_cls: {spec: ../models/helmet_cls_v8n_v2_96.json, role: helmet_cls, backend: cpu}
+  coco: {spec: ../models/coco_v8s_384x640.json, role: objects, every_n: 2, conf: 0.35,
+         classes: [cell phone, car, truck, bus, motorcycle]}
+
+cameras:
+  - id: cam1
+    name: "Камера 1"
+    source: ../data/videos/room/cam1.mp4
+    process_fps: 8
+    calibration: {auto: {person_height_m: 1.7}, placement: {x: 12, y: 0.5, yaw_deg: 0}}
+  - id: cam2
+    name: "Камера 2"
+    source: ../data/videos/room/cam2.mp4
+    process_fps: 8
+    calibration: {auto: {person_height_m: 1.7}, align_to: cam1}
+  # «Сектор C»: вектор правил, поданный вместе с потоком этой камеры —
+  # каску и спецодежду можно не носить, курить нельзя (позиции — см. python -m safetyvision rules)
+  - id: cam3
+    name: "Камера 3 — сектор C"
+    source: ../data/videos/room/cam3.mp4
+    process_fps: 8
+    rules: [0, 0, 1, 0, 0, 0, 0, 0, 0]
+    calibration: {auto: {person_height_m: 1.7}, align_to: cam1}
+
+zones:
+  # опасная зона у сталелитейного котла (метры на карте) — вход запрещён всегда
+  - id: furnace
+    name: "Котёл — опасная зона"
+    kind: danger
+    polygon: [[10, 6], [14, 6], [14, 9], [10, 9]]
+  # зона погрузки: опасна только в часы работы погрузчика
+  - id: loading
+    name: "Зона погрузки"
+    kind: danger
+    polygon: [[2, 10], [8, 10], [8, 16], [2, 16]]
+    schedule: ["08:00-12:00", "13:00-20:00"]
+  # курилка: здесь курить можно
+  - id: smoking_area
+    name: "Курилка"
+    kind: area
+    polygon: [[19, 14], [23, 14], [23, 17], [19, 17]]
+    rules: {smoking: 0}
+    priority: 10
+  # динамическая зона: 3 м вокруг любого погрузчика/машины
+  - id: forklift_radius
+    name: "Радиус погрузчика"
+    kind: dynamic
+    attach_to: vehicle
+    radius_m: 3.0
+
+events:
+  output_dir: ../runs/room
+  pre_roll_s: 4
+  post_roll_s: 2
+  webhooks: []          # например: ["http://backend:8080/api/violations"]

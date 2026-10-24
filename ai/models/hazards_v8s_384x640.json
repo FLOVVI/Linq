@@ -1,0 +1,346 @@
+{
+  "name": "hazards_v8s_384x640",
+  "task": "detect",
+  "source_weights": "models/src/hazards_v8s_512.pt",
+  "input": {
+    "name": "images",
+    "shape": [
+      1,
+      3,
+      384,
+      640
+    ],
+    "format": "RGB, 0..1, NCHW, letterbox 114"
+  },
+  "levels": [
+    {
+      "stride": 8,
+      "box": "box_s8",
+      "cls": "cls_s8"
+    },
+    {
+      "stride": 16,
+      "box": "box_s16",
+      "cls": "cls_s16"
+    },
+    {
+      "stride": 32,
+      "box": "box_s32",
+      "cls": "cls_s32"
+    }
+  ],
+  "reg_max": 16,
+  "classes": [
+    "cigarette",
+    "fire",
+    "smoke",
+    "forklift"
+  ],
+  "kpt_shape": null,
+  "onnx": "hazards_v8s_384x640.onnx",
+  "tpu": "hazards_v8s_384x640_b1_o5_h1m.tpu",
+  "tpu_build": {
+    "preset": "o5",
+    "calib_images": 48,
+    "percentile": 99.99,
+    "quant_cosine": {
+      "box_s8": 0.9838,
+      "cls_s8": 0.9966,
+      "box_s16": 0.9722,
+      "cls_s16": 0.9988,
+      "box_s32": 0.9918,
+      "cls_s32": 0.9986
+    },
+    "tensor_descriptions": [
+      {
+        "key": "images",
+        "user_shape_mask": [
+          "(False,)",
+          "(False, False, False, True)",
+          "(False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False)",
+          "(False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False)"
+        ],
+        "user_order": [
+          "N",
+          "C",
+          "H",
+          "W"
+        ],
+        "user_dtype": "UserNumberType.FLOAT32",
+        "tpu_shape": [
+          "1",
+          "384",
+          "640",
+          "1",
+          "4"
+        ],
+        "tpu_order": [
+          "C",
+          "H",
+          "W",
+          "N",
+          "B"
+        ],
+        "tpu_dtype": "TpuNumberType.INT8",
+        "scales": [
+          "127.0"
+        ],
+        "scale_shape": [
+          "1"
+        ],
+        "zero_points": [
+          "0.0"
+        ],
+        "anchor": "None"
+      },
+      {
+        "key": "box_s8",
+        "user_shape_mask": [
+          "(False,)",
+          "(False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False)",
+          "(False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False)",
+          "(False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False)"
+        ],
+        "user_order": [
+          "N",
+          "C",
+          "H",
+          "W"
+        ],
+        "user_dtype": "UserNumberType.FLOAT32",
+        "tpu_shape": [
+          "1",
+          "48",
+          "80",
+          "1",
+          "64"
+        ],
+        "tpu_order": [
+          "C",
+          "H",
+          "W",
+          "N",
+          "B"
+        ],
+        "tpu_dtype": "TpuNumberType.INT8",
+        "scales": [
+          "0.14351119101047516"
+        ],
+        "scale_shape": [
+          "1"
+        ],
+        "zero_points": [
+          "0.0"
+        ],
+        "anchor": "None"
+      },
+      {
+        "key": "cls_s32",
+        "user_shape_mask": [
+          "(False,)",
+          "(False, False, False, False)",
+          "(False, False, False, False, False, False, False, False, False, False, False, False)",
+          "(False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, True, True, True, True, True, True, True, True, True, True, True, True)"
+        ],
+        "user_order": [
+          "N",
+          "C",
+          "H",
+          "W"
+        ],
+        "user_dtype": "UserNumberType.FLOAT32",
+        "tpu_shape": [
+          "1",
+          "12",
+          "32",
+          "1",
+          "4"
+        ],
+        "tpu_order": [
+          "C",
+          "H",
+          "W",
+          "N",
+          "B"
+        ],
+        "tpu_dtype": "TpuNumberType.INT8",
+        "scales": [
+          "0.1837492734193802"
+        ],
+        "scale_shape": [
+          "1"
+        ],
+        "zero_points": [
+          "0.0"
+        ],
+        "anchor": "None"
+      },
+      {
+        "key": "cls_s8",
+        "user_shape_mask": [
+          "(False,)",
+          "(False, False, False, False)",
+          "(False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False)",
+          "(False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True)"
+        ],
+        "user_order": [
+          "N",
+          "C",
+          "H",
+          "W"
+        ],
+        "user_dtype": "UserNumberType.FLOAT32",
+        "tpu_shape": [
+          "1",
+          "48",
+          "96",
+          "1",
+          "4"
+        ],
+        "tpu_order": [
+          "C",
+          "H",
+          "W",
+          "N",
+          "B"
+        ],
+        "tpu_dtype": "TpuNumberType.INT8",
+        "scales": [
+          "0.3039179742336273"
+        ],
+        "scale_shape": [
+          "1"
+        ],
+        "zero_points": [
+          "0.0"
+        ],
+        "anchor": "None"
+      },
+      {
+        "key": "box_s32",
+        "user_shape_mask": [
+          "(False,)",
+          "(False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False)",
+          "(False, False, False, False, False, False, False, False, False, False, False, False)",
+          "(False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False)"
+        ],
+        "user_order": [
+          "N",
+          "C",
+          "H",
+          "W"
+        ],
+        "user_dtype": "UserNumberType.FLOAT32",
+        "tpu_shape": [
+          "1",
+          "12",
+          "20",
+          "1",
+          "64"
+        ],
+        "tpu_order": [
+          "C",
+          "H",
+          "W",
+          "N",
+          "B"
+        ],
+        "tpu_dtype": "TpuNumberType.INT8",
+        "scales": [
+          "0.0829557329416275"
+        ],
+        "scale_shape": [
+          "1"
+        ],
+        "zero_points": [
+          "0.0"
+        ],
+        "anchor": "None"
+      },
+      {
+        "key": "box_s16",
+        "user_shape_mask": [
+          "(False,)",
+          "(False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False)",
+          "(False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False)",
+          "(False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False)"
+        ],
+        "user_order": [
+          "N",
+          "C",
+          "H",
+          "W"
+        ],
+        "user_dtype": "UserNumberType.FLOAT32",
+        "tpu_shape": [
+          "1",
+          "24",
+          "40",
+          "1",
+          "64"
+        ],
+        "tpu_order": [
+          "C",
+          "H",
+          "W",
+          "N",
+          "B"
+        ],
+        "tpu_dtype": "TpuNumberType.INT8",
+        "scales": [
+          "0.10959485918283463"
+        ],
+        "scale_shape": [
+          "1"
+        ],
+        "zero_points": [
+          "0.0"
+        ],
+        "anchor": "None"
+      },
+      {
+        "key": "cls_s16",
+        "user_shape_mask": [
+          "(False,)",
+          "(False, False, False, False)",
+          "(False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False)",
+          "(False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True)"
+        ],
+        "user_order": [
+          "N",
+          "C",
+          "H",
+          "W"
+        ],
+        "user_dtype": "UserNumberType.FLOAT32",
+        "tpu_shape": [
+          "1",
+          "24",
+          "64",
+          "1",
+          "4"
+        ],
+        "tpu_order": [
+          "C",
+          "H",
+          "W",
+          "N",
+          "B"
+        ],
+        "tpu_dtype": "TpuNumberType.INT8",
+        "scales": [
+          "0.2335752695798874"
+        ],
+        "scale_shape": [
+          "1"
+        ],
+        "zero_points": [
+          "0.0"
+        ],
+        "anchor": "None"
+      }
+    ],
+    "compile_s": 89.5
+  },
+  "tpu_output_alias": {}
+}

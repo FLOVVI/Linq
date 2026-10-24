@@ -1,0 +1,77 @@
+# Проверка на ролике line_fence_38806070 (Pexels): Линия розлива. Зоны заданы в пикселях кадра камеры.
+site:
+  id: line_fence
+  name: Линия розлива
+  map:
+    size_m:
+    - 30
+    - 20
+    px_per_m: 20
+    auto_fit: true
+    max_range_m: 12
+  rules:
+    helmet: 1
+    vest: 1
+    smoking: 1
+    phone: 1
+    running: 1
+    danger_zone: 1
+    vehicle_proximity: 1
+    fall: 1
+    fire: 1
+models:
+  backend: onnx
+  pose:
+    spec: ../../models/pose_v8n_384x640.json
+    conf: 0.35
+  ppe:
+    spec: ../../models/ppe_sh17s_384x640.json
+    conf: 0.3
+    every_n: 2
+  helmet_cls:
+    spec: ../../models/helmet_cls_v8n_v2_96.json
+    role: helmet_cls
+    backend: cpu
+  hazards:
+    spec: ../../models/hazards_v8s_384x640.json
+    role: objects
+    every_n: 2
+    conf: 0.35
+  coco:
+    spec: ../../models/coco_v8s_384x640.json
+    role: objects
+    every_n: 2
+    conf: 0.35
+    classes:
+    - cell phone
+    - car
+    - truck
+    - bus
+    - motorcycle
+cameras:
+- id: cam1
+  name: Камера 1 — линия
+  source: ../../data/videos/factory/line_fence_38806070.mp4
+  process_fps: 8
+  calibration:
+    auto:
+      person_height_m: 1.7
+      hfov_deg: 60
+zones:
+- id: conveyor
+  name: Площадка конвейера
+  kind: danger
+  camera: cam1
+  polygon_px:
+  - - 880
+    - 150
+  - - 1280
+    - 150
+  - - 1280
+    - 460
+  - - 880
+    - 460
+events:
+  output_dir: ../../runs/factory/line_fence
+  pre_roll_s: 2
+  post_roll_s: 1

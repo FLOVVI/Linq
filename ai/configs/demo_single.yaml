@@ -1,0 +1,34 @@
+# Демо: одна камера на стройплощадке. Карта строится авто-калибровкой по людям.
+site:
+  id: demo
+  name: "Стройплощадка (демо)"
+  map: {size_m: [30, 24], px_per_m: 20, auto_fit: true}
+  # вектор правил по каталогу (python -m safetyvision rules):
+  # helmet vest smoking phone running danger_zone vehicle_proximity fall fire gloves goggles
+  rules: [1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0]
+
+models:
+  backend: onnx          # onnx — ноутбук; tpu — ускоритель LinQ (нужны .tpu в спецификациях)
+  pose: {spec: ../models/pose_v8n_384x640.json, conf: 0.35}
+  ppe: {spec: ../models/ppe_sh17s_384x640.json, conf: 0.3, every_n: 2}
+  # проверка головы перед тревогой «нет каски»: вырезка 96×96 -> каска / без каски.
+  # Всегда на CPU: int8-квантование ломает этот классификатор (точность 0.57 против 0.98, см. AI.md)
+  helmet_cls: {spec: ../models/helmet_cls_v8n_v2_96.json, role: helmet_cls, backend: cpu}
+  coco:
+    spec: ../models/coco_v8s_384x640.json
+    role: objects
+    every_n: 2
+    conf: 0.35
+    classes: [cell phone, car, truck, bus, motorcycle]
+
+cameras:
+  - id: cam1
+    name: "Камера 1 — въезд"
+    source: ../data/videos/pexels/construction_walk_5434223.mp4
+    process_fps: 8
+    calibration: {auto: {person_height_m: 1.7}}
+
+events:
+  output_dir: ../runs/demo_single
+  pre_roll_s: 3
+  post_roll_s: 2

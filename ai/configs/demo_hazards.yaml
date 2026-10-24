@@ -1,0 +1,35 @@
+# Демо: огонь/дым, курение, погрузчики — собственная модель hazards_v8s (см. AI.md, «Модель опасностей»).
+#   python -m safetyvision run configs/demo_hazards.yaml --source data/videos/pexels/smoking_10650785.mp4
+site:
+  id: hazards
+  name: "Цех (демо опасностей)"
+  map: {size_m: [30, 24], px_per_m: 20, auto_fit: true}
+  # helmet vest smoking phone running danger_zone vehicle_proximity fall fire gloves goggles
+  rules: [0, 0, 1, 1, 0, 0, 1, 1, 1, 0, 0]
+
+models:
+  backend: onnx
+  pose: {spec: ../models/pose_v8n_384x640.json, conf: 0.35}
+  hazards:
+    spec: ../models/hazards_v8s_384x640.json
+    role: objects
+    every_n: 2
+    conf: 0.35
+  coco:
+    spec: ../models/coco_v8s_384x640.json
+    role: objects
+    every_n: 2
+    conf: 0.35
+    classes: [cell phone, car, truck, bus, motorcycle]
+
+cameras:
+  - id: cam1
+    name: "Камера 1 — цех"
+    source: ../data/videos/pexels/fire_barrel_31997063.mp4
+    process_fps: 8
+    calibration: {auto: {person_height_m: 1.7}}
+
+events:
+  output_dir: ../runs/demo_hazards
+  pre_roll_s: 3
+  post_roll_s: 2

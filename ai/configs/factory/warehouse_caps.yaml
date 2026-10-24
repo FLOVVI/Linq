@@ -1,0 +1,64 @@
+# Проверка на ролике warehouse_caps_4293552 (Pexels): Склад запчастей. Зоны заданы в пикселях кадра камеры.
+site:
+  id: warehouse_caps
+  name: Склад запчастей
+  map:
+    size_m:
+    - 30
+    - 20
+    px_per_m: 20
+    auto_fit: true
+    max_range_m: 12
+  rules:
+    helmet: 1
+    vest: 1
+    smoking: 1
+    phone: 1
+    running: 1
+    danger_zone: 1
+    vehicle_proximity: 1
+    fall: 1
+    fire: 1
+models:
+  backend: onnx
+  pose:
+    spec: ../../models/pose_v8n_384x640.json
+    conf: 0.35
+  ppe:
+    spec: ../../models/ppe_sh17s_384x640.json
+    conf: 0.3
+    every_n: 2
+  helmet_cls:
+    spec: ../../models/helmet_cls_v8n_v2_96.json
+    role: helmet_cls
+    backend: cpu
+  hazards:
+    spec: ../../models/hazards_v8s_384x640.json
+    role: objects
+    every_n: 2
+    conf: 0.35
+  coco:
+    spec: ../../models/coco_v8s_384x640.json
+    role: objects
+    every_n: 2
+    conf: 0.35
+    classes:
+    - cell phone
+    - car
+    - truck
+    - bus
+    - motorcycle
+cameras:
+- id: cam1
+  name: Камера 1 — стеллажи
+  source: ../../data/videos/factory/warehouse_caps_4293552.mp4
+  process_fps: 8
+  calibration:
+    auto:
+      person_height_m: 1.7
+      hfov_deg: 60
+zones: []
+events:
+  output_dir: ../../runs/factory/warehouse_caps
+  pre_roll_s: 2
+  post_roll_s: 1

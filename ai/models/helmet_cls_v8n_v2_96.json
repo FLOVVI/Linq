@@ -1,0 +1,119 @@
+{
+  "name": "helmet_cls_v8n_v2_96",
+  "task": "classify",
+  "source_weights": "models/src/helmet_cls_v8n_96_v2.pt",
+  "input": {
+    "name": "images",
+    "shape": [
+      1,
+      3,
+      96,
+      96
+    ],
+    "format": "RGB, 0..1, NCHW, resize"
+  },
+  "outputs": [
+    "logits"
+  ],
+  "output_kind": "logits",
+  "classes": [
+    "helmet",
+    "no_helmet"
+  ],
+  "onnx": "helmet_cls_v8n_v2_96.onnx",
+  "tpu": "helmet_cls_v8n_v2_96_b1_o5_h1m.tpu",
+  "tpu_build": {
+    "preset": "o5",
+    "calib_images": 64,
+    "percentile": 99.99,
+    "quant_cosine": {
+      "logits": 0.9842
+    },
+    "tensor_descriptions": [
+      {
+        "key": "images",
+        "user_shape_mask": [
+          "(False,)",
+          "(False, False, False, True)",
+          "(False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False)",
+          "(False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False)"
+        ],
+        "user_order": [
+          "N",
+          "C",
+          "H",
+          "W"
+        ],
+        "user_dtype": "UserNumberType.FLOAT32",
+        "tpu_shape": [
+          "1",
+          "96",
+          "96",
+          "1",
+          "4"
+        ],
+        "tpu_order": [
+          "C",
+          "H",
+          "W",
+          "N",
+          "B"
+        ],
+        "tpu_dtype": "TpuNumberType.INT8",
+        "scales": [
+          "127.0"
+        ],
+        "scale_shape": [
+          "1"
+        ],
+        "zero_points": [
+          "0.0"
+        ],
+        "anchor": "None"
+      },
+      {
+        "key": "logits",
+        "user_shape_mask": [
+          "(False,)",
+          "(False, False, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True)",
+          "(False,)",
+          "(False,)"
+        ],
+        "user_order": [
+          "N",
+          "H",
+          "W",
+          "C"
+        ],
+        "user_dtype": "UserNumberType.FLOAT32",
+        "tpu_shape": [
+          "1",
+          "128",
+          "1",
+          "1",
+          "1"
+        ],
+        "tpu_order": [
+          "C",
+          "H",
+          "W",
+          "N",
+          "B"
+        ],
+        "tpu_dtype": "TpuNumberType.INT8",
+        "scales": [
+          "0.12656641006469727"
+        ],
+        "scale_shape": [
+          "1"
+        ],
+        "zero_points": [
+          "0.0"
+        ],
+        "anchor": "None"
+      }
+    ],
+    "compile_s": 17.3
+  },
+  "tpu_output_alias": {}
+}

@@ -1,0 +1,80 @@
+# Проверка на ролике valve_plant_32243444 (Pexels): Цех трубопроводной арматуры. Зоны заданы в пикселях кадра камеры.
+site:
+  id: valve_plant
+  name: Цех трубопроводной арматуры
+  map:
+    size_m:
+    - 30
+    - 20
+    px_per_m: 20
+    auto_fit: true
+    max_range_m: 12
+  rules:
+    helmet: 1
+    vest: 1
+    smoking: 1
+    phone: 1
+    running: 1
+    danger_zone: 1
+    vehicle_proximity: 1
+    fall: 1
+    fire: 1
+  # жилеты на этом заводе синие со светоотражающими полосами — SH17 таких не знает
+  rule_params:
+    vest: {vest_colors: [blue, yellow, orange, lime]}
+models:
+  backend: onnx
+  pose:
+    spec: ../../models/pose_v8n_384x640.json
+    conf: 0.35
+  ppe:
+    spec: ../../models/ppe_sh17s_384x640.json
+    conf: 0.3
+    every_n: 2
+  helmet_cls:
+    spec: ../../models/helmet_cls_v8n_v2_96.json
+    role: helmet_cls
+    backend: cpu
+  hazards:
+    spec: ../../models/hazards_v8s_384x640.json
+    role: objects
+    every_n: 2
+    conf: 0.35
+  coco:
+    spec: ../../models/coco_v8s_384x640.json
+    role: objects
+    every_n: 2
+    conf: 0.35
+    classes:
+    - cell phone
+    - car
+    - truck
+    - bus
+    - motorcycle
+cameras:
+- id: cam1
+  name: Камера 1 — монтажный участок
+  source: ../../data/videos/factory/valve_plant_32243444.mp4
+  process_fps: 8
+  calibration:
+    auto:
+      person_height_m: 1.7
+      hfov_deg: 60
+zones:
+- id: hoist
+  name: Под подвешенным грузом
+  kind: danger
+  camera: cam1
+  polygon_px:
+  - - 650
+    - 535
+  - - 835
+    - 535
+  - - 850
+    - 625
+  - - 640
+    - 625
+events:
+  output_dir: ../../runs/factory/valve_plant
+  pre_roll_s: 2
+  post_roll_s: 1

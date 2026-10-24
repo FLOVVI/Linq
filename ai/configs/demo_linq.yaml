@@ -1,0 +1,38 @@
+# Демо на сервере LinQ: два видеопотока на одной плате, нейросети на TPU.
+#   python -m safetyvision run configs/demo_linq.yaml --save-video runs/linq_demo.mp4
+site:
+  id: linq_demo
+  name: "Демо на LinQ TPU"
+  map: {size_m: [30, 24], px_per_m: 20, auto_fit: true}
+  rules: [1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0]
+
+models:
+  backend: tpu
+  pose: {spec: ../models/pose_v8n_384x640.json, conf: 0.35}
+  ppe: {spec: ../models/ppe_sh17s_384x640.json, conf: 0.3, every_n: 2}
+  # проверка головы перед тревогой «нет каски»: вырезка 96×96 -> каска / без каски.
+  # Всегда на CPU: int8-квантование ломает этот классификатор (точность 0.57 против 0.98, см. AI.md)
+  helmet_cls: {spec: ../models/helmet_cls_v8n_v2_96.json, role: helmet_cls, backend: cpu}
+  coco:
+    spec: ../models/coco_v8s_384x640.json
+    role: objects
+    every_n: 2
+    conf: 0.35
+    classes: [cell phone, car, truck, bus, motorcycle]
+
+cameras:
+  - id: cam1
+    name: "Камера 1 — стройка"
+    source: ../data/videos/demo/construction_walk_5434223.mp4
+    process_fps: 8
+    calibration: {auto: {person_height_m: 1.7}}
+  - id: cam2
+    name: "Камера 2 — склад"
+    source: ../data/videos/demo/forklift_6079421.mp4
+    process_fps: 8
+    calibration: {auto: {person_height_m: 1.7}}
+
+events:
+  output_dir: ../runs/linq_demo
+  pre_roll_s: 3
+  post_roll_s: 2

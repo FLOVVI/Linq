@@ -1,0 +1,43 @@
+# ИИ-модуль вместе с сайтом команды (корень репозитория: FastAPI + PostgreSQL + React).
+#   python -m safetyvision bridge configs/site_bridge.yaml            # ноутбук, ONNX
+#   python -m safetyvision bridge configs/site_bridge.yaml --backend tpu
+# Камеры, векторы правил и зоны берутся с сайта; здесь — только модели и параметры конвейера.
+bridge:
+  site_url: http://127.0.0.1:8000      # бэкенд сайта (env LINQ_SITE_URL)
+  api_key: dev-ingest-key              # INGEST_KEY бэкенда (env LINQ_INGEST_KEY)
+  port: 8001                           # видео с разметкой для браузера: /stream/<id камеры>
+  public_url: http://127.0.0.1:8001    # адрес моста, как его видит браузер
+  process_fps: 5                       # кадров в секунду на камеру; при нехватке скорости кадры пропускаются
+  poll_s: 2
+  # Демо: камеры сайта по коду показывают наши записи (цикл, в реальном времени; нарушения повторных
+  # проходов записи в журнал не идут). Уберите строку — камера возьмёт rtsp_url из БД.
+  # Видео, загруженное через сайт, важнее этих строк. rule_params — параметры правил для участка камеры.
+  sources:
+    CAM-01:
+      source: ../data/videos/factory/valve_plant_32243444.mp4
+      rule_params: {vest: {vest_colors: [blue, yellow, orange, lime]}}   # на этом заводе синие жилеты
+    CAM-02: ../data/videos/factory/intel_floor_zone.mp4
+    CAM-03: ../data/videos/factory/steel_crane_33855578.mp4
+
+site:
+  id: linq_site
+  name: Сайт LinQ
+  map: {size_m: [30, 20], px_per_m: 20, auto_fit: true, max_range_m: 15}
+
+models:
+  backend: onnx          # onnx — ноутбук; tpu — ускоритель LinQ
+  pose: {spec: ../models/pose_v8n_384x640.json, conf: 0.35}
+  ppe: {spec: ../models/ppe_sh17s_384x640.json, conf: 0.3, every_n: 2}
+  helmet_cls: {spec: ../models/helmet_cls_v8n_v2_96.json, role: helmet_cls, backend: cpu}
+  hazards: {spec: ../models/hazards_v8s_384x640.json, role: objects, every_n: 2, conf: 0.35}
+  coco:
+    spec: ../models/coco_v8s_384x640.json
+    role: objects
+    every_n: 2
+    conf: 0.35
+    classes: [cell phone, car, truck, bus, motorcycle]
+
+events:
+  output_dir: ../runs/site_bridge
+  pre_roll_s: 2
+  post_roll_s: 1
