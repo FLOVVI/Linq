@@ -5,3 +5,7 @@
 ai/runs/
 localdb/
 frontend/node_modules/
+frontend/dist/
+uploads/
+.pytest_cache/
+.venv/

@@ -74,6 +74,12 @@ foreach ($p in @{ 'БД' = $DbPort; 'бэкенд' = $ApiPort; 'фронтенд
     if (Test-Port $p.Value) { throw "Порт $($p.Value) ($($p.Key)) уже занят. Сначала остановите старые процессы: run.bat stop" }
 }
 
+# Файлы, которых нет в репозитории (.env и localdb/ в .gitignore), создаются при первом запуске
+if (-not (Test-Path "$Root\.env")) {
+    [IO.File]::WriteAllText("$Root\.env", "DATABASE_URL=postgresql://linq_user:linq_password@localhost:$DbPort/linq_db`n", (New-Object Text.UTF8Encoding $false))
+    'Создан .env (адрес БД). Для ИИ на ускорителе добавьте в него строку LINQ_LOGIN=<логин Jupyter>'
+}
+
 $accel = if ($Action -eq 'cpu') { @{ Mode = $null } } else { Get-Accelerator }
 $mode = $accel.Mode
 if ($Action -eq 'tpu' -and -not $mode) {
@@ -94,6 +100,11 @@ if (Test-Docker) {
     Push-Location $Root; docker compose up -d; Pop-Location
 } else {
     'БД: PGlite (Docker не найден)'
+    if (-not (Test-Path "$Root\localdb\package.json")) {
+        New-Item -ItemType Directory -Force "$Root\localdb" | Out-Null
+        $pkg = '{ "name": "linq-localdb", "private": true, "dependencies": { "@electric-sql/pglite": "^0.5.11", "@electric-sql/pglite-socket": "^0.2.14" } }'
+        [IO.File]::WriteAllText("$Root\localdb\package.json", $pkg, (New-Object Text.UTF8Encoding $false))
+    }
     if (-not (Test-Path "$Root\localdb\node_modules")) {
         Push-Location "$Root\localdb"; npm install --no-audit --no-fund; Pop-Location
     }
