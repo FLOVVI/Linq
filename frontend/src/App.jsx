@@ -40,6 +40,7 @@ import {
   Search,
   Download,
   Radar,
+  Ruler,
 } from 'lucide-react';
 
 // 13 типов нарушений
@@ -154,12 +155,22 @@ function checkWorkerZoneCollision(worker, zones) {
   return null;
 }
 
-// Где нарушение на карте цеха. ИИ-модуль присылает точку нарушения в кадре (ai_pos.fx, fy в %): низ кадра —
-// у камеры, верх — дальний край луча обзора, края кадра — края луча (луч рисует UnifiedWorkshopMap в пикселях,
-// так же считает ai/safetyvision/site_bridge.py: plan_pos). Без точки в кадре (тестовые события) — ai_pos.x, y.
-function eventPlanPos(ev, cam, box) {
+// Где нарушение на карте цеха — на полу, там, где оно случилось. ИИ-модуль присылает точку нарушения в кадре
+// (ai_pos.fx, fy в %: у человека — точка ног), у откалиброванной камеры ещё и сразу в метрах от камеры (lx, ly).
+// Точку кадра переводим на пол моделью камеры: из калибровки ИИ (plan.camera), а пока её нет — типовой камерой.
+// Без масштаба плана (карта ещё не измерена) — условный луч у камеры, без точки в кадре (тестовые события) —
+// ai_pos.x, y (так же считает ai/safetyvision/site_bridge.py: plan_pos).
+function eventPlanPos(ev, cam, box, pxPerM, plan) {
   const p = ev.ai_pos;
   if (!p) return null;
+  const clamp = (v) => Math.round(Math.min(98, Math.max(2, v)) * 10) / 10;
+  if (pxPerM && cam?.mapPos && box?.w && box?.h && (p.lx != null || p.fx != null)) {
+    const xy = p.lx != null && p.ly != null ? [p.lx, p.ly] : frameToFloor(plan, cam.ai?.frame, p.fx, p.fy);
+    const [x, y] = floorToPlan(cam, box, pxPerM, xy);
+    // обзор камеры может уходить за край плана — точка остаётся на месте (в пределах запаса холста тепловой карты)
+    const wide = (v) => Math.round(Math.min(148, Math.max(-48, v)) * 10) / 10;
+    return { x: wide((x / box.w) * 100), y: wide((y / box.h) * 100) };
+  }
   if (p.fx == null || p.fy == null || !cam?.mapPos || !box?.w || !box?.h) return { x: p.x, y: p.y };
   const d = 0.3 + 0.7 * (1 - p.fy / 100);
   const fwd = d * 54;
@@ -167,8 +178,331 @@ function eventPlanPos(ev, cam, box) {
   const a = (((cam.mapDirection || 0) + (cam.panAngle || 0)) * Math.PI) / 180;
   const dx = lat * Math.cos(a) + fwd * Math.sin(a);
   const dy = lat * Math.sin(a) - fwd * Math.cos(a);
-  const clamp = (v) => Math.round(Math.min(98, Math.max(2, v)) * 10) / 10;
   return { x: clamp(cam.mapPos.x + (dx / box.w) * 100), y: clamp(cam.mapPos.y + (dy / box.h) * 100) };
+}
+
+// Камера, пока ИИ её не откалибровал (по росту проходящих людей): типовая настенная — 3 м, наклон 20°, обзор 60°
+const TYPICAL_CAMERA = { height_m: 3, tilt_deg: 20, roll_deg: 0, hfov_deg: 60 };
+const DEFAULT_RANGE_M = 15;
+
+// Модель камеры над полом для кадра W×H: калибровка ИИ или типовая
+function floorModel(plan, frame) {
+  const [W, H] = frame?.[0] && frame?.[1] ? frame : [1280, 720];
+  const range = plan?.range_m || DEFAULT_RANGE_M;
+  if (plan?.mapped && plan.camera) return { ...plan.camera, W, H, range };
+  const f = W / 2 / Math.tan((TYPICAL_CAMERA.hfov_deg * Math.PI) / 360);
+  return { ...TYPICAL_CAMERA, f, cx: W / 2, cy: H / 2, W, H, range };
+}
+
+// Пиксель кадра (u, v) -> пол в метрах от камеры (X — вправо, Y — вперёд). Та же пинхол-модель, что у ИИ
+// (CameraModel и GroundMapping.from_camera в ai/safetyvision/geometry/homography.py): выше горизонта пола нет,
+// поэтому такие точки (и всё дальше дальности обзора) кладём на дальний край обзора.
+function pixelToFloor(m, u, v) {
+  const t = (m.tilt_deg * Math.PI) / 180;
+  const r = ((m.roll_deg || 0) * Math.PI) / 180;
+  const top = Math.max(
+    Math.max(0, m.cy - m.f * Math.tan(t) + 0.03 * m.H),
+    Math.min(m.cy + m.f * Math.tan(Math.atan2(m.height_m, m.range) - t), m.H - 2)
+  );
+  const vv = Math.max(v, top);
+  // строки R — оси камеры (x вправо, y вниз, z вперёд) в мире (X вправо, Y вперёд, Z вверх), с креном
+  const rt = [
+    [1, 0, 0],
+    [0, -Math.sin(t), -Math.cos(t)],
+    [0, Math.cos(t), -Math.sin(t)],
+  ];
+  const c = Math.cos(r);
+  const s = Math.sin(r);
+  const R = [rt[0].map((x, j) => c * x - s * rt[1][j]), rt[0].map((x, j) => s * x + c * rt[1][j]), rt[2]];
+  // луч из камеры через пиксель — в мир; пересечение с полом (камера на высоте height_m)
+  const n = [(u - m.cx) / m.f, (vv - m.cy) / m.f, 1];
+  const d = [0, 1, 2].map((j) => R[0][j] * n[0] + R[1][j] * n[1] + R[2][j] * n[2]);
+  const k = d[2] < -1e-6 ? m.height_m / -d[2] : Infinity;
+  let X = k * d[0];
+  let Y = k * d[1];
+  const far = m.range * 1.6;
+  if (!Number.isFinite(X) || !Number.isFinite(Y) || Y > far) {
+    const q = far / Math.max(d[1], 1e-6);
+    X = d[0] * q;
+    Y = far;
+  }
+  return [X, Y];
+}
+
+// Точка кадра в % -> пол в метрах от камеры
+function frameToFloor(plan, frame, fx, fy) {
+  const m = floorModel(plan, frame);
+  return pixelToFloor(m, (fx / 100) * m.W, (fy / 100) * m.H);
+}
+
+// Примерный обзор камеры без калибровки: края кадра, спроецированные типовой камерой на пол
+function typicalFootprint(frame) {
+  const m = floorModel(null, frame);
+  const e = [0, 0.25, 0.5, 0.75, 1];
+  const edge = [
+    ...e.map((k) => [k, 1]),
+    ...e.map((k) => [1, 1 - k]),
+    ...e.map((k) => [1 - k, 0]),
+    ...e.map((k) => [0, k]),
+  ];
+  return edge.map(([a, b]) => pixelToFloor(m, a * (m.W - 1), b * (m.H - 1)));
+}
+
+// Точка пола в метрах от камеры (X — вправо, Y — вперёд; так их отдаёт ИИ-модуль: camera_floor в pipeline.py)
+// -> пиксели карты цеха: от места камеры на плане по её азимуту с поворотом PTZ
+function floorToPlan(cam, box, pxPerM, [X, Y]) {
+  const a = (((cam.mapDirection || 0) + (cam.panAngle || 0)) * Math.PI) / 180;
+  return [
+    (cam.mapPos.x / 100) * box.w + (X * Math.cos(a) + Y * Math.sin(a)) * pxPerM,
+    (cam.mapPos.y / 100) * box.h + (X * Math.sin(a) - Y * Math.cos(a)) * pxPerM,
+  ];
+}
+
+// Масштаб плана цеха: сколько метров по ширине карты; сетка, кольца дальности и линейка — в «круглых» метрах
+const PLAN_WIDTHS_M = [20, 30, 40, 50, 60, 80, 100, 150, 200];
+const niceMeters = (pxPerM, minPx) => [1, 2, 5, 10, 20, 50, 100].find((m) => m * pxPerM >= minPx) || 200;
+
+const PLAN_STATUS_COLORS = { ok: '#34D399', pending: '#FBBF24', violation: '#F43F5E' };
+const PLAN_ZONE_COLORS = { danger: '#F43F5E', attention: '#F59E0B', blind: '#64748B' };
+
+// ИИ-карта камер на плане цеха: что каждая откалиброванная камера видит на полу — обзор до дальности ИИ
+// с кольцами через каждые несколько метров, зоны, нарисованные на её кадре, люди (цвет — статус) и техника.
+// Камера без калибровки — примерный обзор типовой камеры пунктиром (туда же тепловая карта ставит её нарушения).
+// Всё в метрах от камеры, поэтому у всех камер один масштаб — масштаб плана. Рисуется слоями (обзоры, зоны,
+// техника и люди, подписи), чтобы обзор одной камеры не закрывал людей на обзоре другой; названия зон и кольца
+// дальности подписаны только у выбранной камеры.
+function AiPlanLayer({ cameras, plans, box, pxPerM, selectedCamId }) {
+  if (!box.w || !box.h || !pxPerM) return null;
+  const ring = niceMeters(pxPerM, 40);
+  const views = cameras
+    .filter((cam) => cam.mapPos)
+    .map((cam) => {
+      const real = plans[cam.id]?.mapped && plans[cam.id].footprint?.length >= 3;
+      const plan = real ? plans[cam.id] : { footprint: typicalFootprint(cam.ai?.frame), zones: [], people: [], vehicles: [] };
+      const P = (xy) => floorToPlan(cam, box, pxPerM, xy);
+      const dist = plan.footprint.map(([x, y]) => Math.hypot(x, y));
+      const ang = plan.footprint.map(([x, y]) => Math.atan2(x, y));
+      const left = Math.min(...ang);
+      const near = Math.min(...dist);
+      const far = Math.max(...dist);
+      const rings = [];
+      for (let r = ring; r < far; r += ring) if (r > near) rings.push(r);
+      return {
+        cam,
+        plan,
+        real,
+        note: real ? null : cam.ai?.online ? 'калибруется' : 'обзор примерный',
+        tip: P([0, Math.max(...plan.footprint.map((xy) => xy[1])) + 10 / pxPerM]),
+        P,
+        pts: (poly) => poly.map((xy) => P(xy).map((v) => v.toFixed(1)).join(',')).join(' '),
+        at: P([0, 0]),
+        // крайние слева и справа точки обзора: от камеры к ним идут боковые лучи
+        sides: [plan.footprint[ang.indexOf(Math.min(...ang))], plan.footprint[ang.indexOf(Math.max(...ang))]].map(P),
+        far,
+        rings,
+        // подпись кольца — снаружи у левого луча обзора, где нет людей и зон
+        ringLabel: (r) => P([r * Math.sin(left) - (12 / pxPerM) * Math.cos(left), r * Math.cos(left) + (12 / pxPerM) * Math.sin(left)]),
+        sel: cam.id === selectedCamId,
+      };
+    })
+    .sort((a, b) => a.sel - b.sel); // выбранная камера — поверх остальных
+  const halo = { stroke: '#0B1120', strokeWidth: 3, paintOrder: 'stroke' };
+  const placed = []; // уже поставленные подписи нарушителей
+  return (
+    <svg
+      viewBox={`0 0 ${box.w} ${box.h}`}
+      className="absolute inset-0 w-full h-full pointer-events-none overflow-visible z-15"
+    >
+      <defs>
+        {views.map(({ cam, at, far, sel, pts, plan }) => (
+          <React.Fragment key={cam.id}>
+            <radialGradient id={`ai-fp-${cam.id}`} cx={at[0]} cy={at[1]} r={far * pxPerM} gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stopColor="#38BDF8" stopOpacity={sel ? 0.4 : 0.22} />
+              <stop offset="100%" stopColor="#0EA5E9" stopOpacity={sel ? 0.12 : 0.05} />
+            </radialGradient>
+            <clipPath id={`ai-clip-${cam.id}`}>
+              <polygon points={pts(plan.footprint)} />
+            </clipPath>
+          </React.Fragment>
+        ))}
+      </defs>
+
+      {/* 1. обзоры камер: пол, который видит камера, боковые лучи от камеры, кольца дальности */}
+      {views.map(({ cam, plan, pts, at, sides, rings, sel, real }) => (
+        <g key={`fov-${cam.id}`} opacity={real ? 1 : 0.75}>
+          {sides.map(([x, y], i) => (
+            <line
+              key={i}
+              x1={at[0]}
+              y1={at[1]}
+              x2={x}
+              y2={y}
+              stroke={real ? '#38BDF8' : '#94A3B8'}
+              strokeOpacity={sel ? 0.45 : 0.22}
+              strokeDasharray="3 4"
+            />
+          ))}
+          <polygon
+            points={pts(plan.footprint)}
+            fill={real ? `url(#ai-fp-${cam.id})` : '#94A3B8'}
+            fillOpacity={real ? 1 : sel ? 0.1 : 0.05}
+            stroke={real ? '#38BDF8' : '#94A3B8'}
+            strokeOpacity={sel ? 0.9 : 0.45}
+            strokeWidth={sel ? 1.6 : 1}
+            strokeDasharray={real ? undefined : '6 4'}
+            strokeLinejoin="round"
+          />
+          <g clipPath={`url(#ai-clip-${cam.id})`} fill="none" stroke="#7DD3FC" strokeOpacity={sel ? 0.3 : 0.15}>
+            {(real ? rings : []).map((r) => (
+              <circle key={r} cx={at[0]} cy={at[1]} r={r * pxPerM} strokeDasharray="4 4" />
+            ))}
+          </g>
+        </g>
+      ))}
+
+      {/* 2. зоны, нарисованные на кадре камеры, — на полу; вне расписания — пунктиром */}
+      {views.map(({ cam, plan, pts }) =>
+        (plan.zones || []).map((z) => {
+          if (z.polygon.length < 3) return null;
+          // id зоны у ИИ — «c<id камеры>:<id зоны сайта>» (site_bridge.py: zone_from_site)
+          const siteZone = (cam.zones || []).find((sz) => z.id === `c${cam.id}:${sz.id}`);
+          const color =
+            PLAN_ZONE_COLORS[siteZone?.type] || (z.kind === 'danger' ? PLAN_ZONE_COLORS.danger : PLAN_ZONE_COLORS.attention);
+          return (
+            <polygon
+              key={`${cam.id}-${z.id}`}
+              points={pts(z.polygon)}
+              fill={color}
+              fillOpacity={z.active ? 0.22 : 0.06}
+              stroke={color}
+              strokeOpacity={z.active ? 0.9 : 0.5}
+              strokeWidth="1.2"
+              strokeDasharray={z.active ? undefined : '4 3'}
+              strokeLinejoin="round"
+            />
+          );
+        })
+      )}
+
+      {/* 3. техника и люди: цвет — статус по правилам, нарушитель пульсирует */}
+      {views.map(({ cam, plan, P }) => (
+        <g key={`obj-${cam.id}`}>
+          {(plan.vehicles || []).map((v, i) => {
+            const [x, y] = P(v.xy);
+            return (
+              <rect key={`v${i}`} x={x - 6} y={y - 4} width="12" height="8" rx="2" fill="#F59E0B" stroke="#0B1120" strokeWidth="1.2" />
+            );
+          })}
+          {(plan.people || []).map((p, i) => {
+            const [x, y] = P(p.xy);
+            const color = PLAN_STATUS_COLORS[p.status] || PLAN_STATUS_COLORS.ok;
+            return (
+              <g key={`p${i}`}>
+                {p.status === 'violation' && (
+                  <circle cx={x} cy={y} r="5" fill="none" stroke={color} strokeWidth="1.5">
+                    <animate attributeName="r" values="5;13" dur="1.2s" repeatCount="indefinite" />
+                    <animate attributeName="stroke-opacity" values="0.9;0" dur="1.2s" repeatCount="indefinite" />
+                  </circle>
+                )}
+                <circle cx={x} cy={y} r="4.5" fill={color} stroke="#fff" strokeWidth="1.3" />
+              </g>
+            );
+          })}
+        </g>
+      ))}
+
+      {/* 4. подписи: дальность и действующие зоны — у выбранной камеры, нарушения — у всех */}
+      {views.map(({ cam, plan, P, rings, ringLabel, sel, real, note, tip }) => (
+        <g key={`txt-${cam.id}`} fontSize="9" className="font-mono">
+          {note && (
+            <text x={tip[0]} y={tip[1]} textAnchor="middle" dominantBaseline="middle" fill="#94A3B8" {...halo}>
+              {cam.code}: {note}
+            </text>
+          )}
+          {sel &&
+            real &&
+            rings.map((r) => {
+              const [x, y] = ringLabel(r);
+              return (
+                <text key={`r${r}`} x={x} y={y} textAnchor="middle" dominantBaseline="middle" fill="#7DD3FC" {...halo}>
+                  {r} м
+                </text>
+              );
+            })}
+          {sel &&
+            (plan.zones || []).map((z) => {
+              if (z.polygon.length < 3 || !z.active) return null;
+              const siteZone = (cam.zones || []).find((sz) => z.id === `c${cam.id}:${sz.id}`);
+              const color =
+                PLAN_ZONE_COLORS[siteZone?.type] || (z.kind === 'danger' ? PLAN_ZONE_COLORS.danger : PLAN_ZONE_COLORS.attention);
+              const n = z.polygon.length;
+              const [x, y] = P(z.polygon.reduce((s, xy) => [s[0] + xy[0] / n, s[1] + xy[1] / n], [0, 0]));
+              return (
+                <text key={z.id} x={x} y={y} textAnchor="middle" dominantBaseline="middle" fontWeight="600" fill={color} {...halo}>
+                  {z.name}
+                </text>
+              );
+            })}
+          {(plan.people || [])
+            .filter((p) => p.status === 'violation')
+            .map((p, i) => {
+              const [x, y] = P(p.xy);
+              let ty = y + 3;
+              // нарушители рядом — подписи стопкой, а не друг на друге
+              while (placed.some(([px, py]) => Math.abs(px - x) < 90 && Math.abs(py - ty) < 11)) ty += 11;
+              placed.push([x, ty]);
+              return (
+                <text key={`l${i}`} x={x + 8} y={ty} fontWeight="700" fill={PLAN_STATUS_COLORS.violation} {...halo}>
+                  {p.label}
+                </text>
+              );
+            })}
+        </g>
+      ))}
+    </svg>
+  );
+}
+
+// Строка под картой цеха: линейка в метрах (с учётом приближения), клетка сетки, легенда ИИ-карты
+function PlanLegend({ pxPerM, zoom, gridM, showAiPlan, aiCams, plans }) {
+  const barM = niceMeters(pxPerM * zoom, 56);
+  const calibrating = aiCams.filter((c) => !plans[c.id]?.mapped);
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-400">
+      <span className="flex items-center gap-2">
+        <span className="h-1.5 border-x border-b border-slate-400" style={{ width: barM * pxPerM * zoom }} />
+        <span className="font-mono">
+          {barM} м • клетка {gridM} м
+        </span>
+      </span>
+      {showAiPlan && (
+        <>
+          {[
+            ['ok', 'в норме'],
+            ['pending', 'проверка'],
+            ['violation', 'нарушение'],
+          ].map(([k, t]) => (
+            <span key={k} className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full" style={{ background: PLAN_STATUS_COLORS[k] }} />
+              {t}
+            </span>
+          ))}
+          <span className="flex items-center gap-1">
+            <span className="w-2.5 h-1.5 rounded-xs bg-amber-500" />
+            техника
+          </span>
+          <span>
+            {aiCams.length === 0
+              ? 'ИИ-карта появится, когда ИИ-модуль начнёт обрабатывать камеры'
+              : `ИИ-карта: ${aiCams.length - calibrating.length} из ${aiCams.length} камер` +
+                (calibrating.length
+                  ? ` • ${calibrating.map((c) => c.code).join(', ')} калибруется по людям в кадре, обзор пока примерный (пунктир)`
+                  : '')}
+          </span>
+        </>
+      )}
+    </div>
+  );
 }
 
 // Вес инцидента на тепловой карте: критичные (падение, огонь, опасная зона у техники) — вдвое тяжелее
@@ -209,16 +543,19 @@ function heatColor(t) {
 }
 
 // Тепловая карта рисков: точки (x, y в % области, w — вес) складываются гауссовыми пятнами радиуса
-// radius (доля меньшей стороны), сумма нормируется на максимум и раскрашивается
-function RiskHeatmap({ points, radius = 0.08, className = '' }) {
+// radius (доля меньшей стороны области), сумма нормируется на максимум и раскрашивается.
+// overscan — на сколько % области холст выходит за неё с каждой стороны: на карте цеха обзоры камер
+// бывают за краем плана, и пятна там не должны обрезаться; maxPx — предел разрешения холста.
+function RiskHeatmap({ points, radius = 0.08, className = '', overscan = 0, maxPx = 420 }) {
   const ref = useRef(null);
   const box = useElementSize(ref);
+  const span = 100 + 2 * overscan;
   // перерисовка только при смене самих точек, а не на каждом рендере страницы (опрос событий, движение мыши)
   const key = points.map((p) => `${p.x},${p.y},${p.w}`).join(';');
   useEffect(() => {
     const cv = ref.current;
     if (!cv || !box.w || !box.h) return;
-    const k = Math.min(1, 420 / Math.max(box.w, box.h));
+    const k = Math.min(1, maxPx / Math.max(box.w, box.h));
     const W = Math.max(1, Math.round(box.w * k));
     const H = Math.max(1, Math.round(box.h * k));
     cv.width = W;
@@ -226,13 +563,13 @@ function RiskHeatmap({ points, radius = 0.08, className = '' }) {
     const ctx = cv.getContext('2d');
     ctx.clearRect(0, 0, W, H);
     if (!points.length) return;
-    const sigma = Math.max(4, radius * Math.min(W, H));
+    const sigma = Math.max(4, ((radius * 100) / span) * Math.min(W, H));
     const R = Math.ceil(sigma * 2.5);
     const acc = new Float32Array(W * H);
     let max = 0;
     for (const p of points) {
-      const cx = (p.x / 100) * W;
-      const cy = (p.y / 100) * H;
+      const cx = ((p.x + overscan) / span) * W;
+      const cy = ((p.y + overscan) / span) * H;
       for (let y = Math.max(0, Math.floor(cy - R)); y < Math.min(H, Math.ceil(cy + R)); y++) {
         for (let x = Math.max(0, Math.floor(cx - R)); x < Math.min(W, Math.ceil(cx + R)); x++) {
           const d2 = (x - cx) ** 2 + (y - cy) ** 2;
@@ -254,8 +591,14 @@ function RiskHeatmap({ points, radius = 0.08, className = '' }) {
     }
     ctx.putImageData(img, 0, 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, radius, box.w, box.h]);
-  return <canvas ref={ref} className={`absolute inset-0 w-full h-full pointer-events-none ${className}`} />;
+  }, [key, radius, overscan, maxPx, box.w, box.h]);
+  return (
+    <canvas
+      ref={ref}
+      style={overscan ? { left: `-${overscan}%`, top: `-${overscan}%`, width: `${span}%`, height: `${span}%` } : undefined}
+      className={`absolute pointer-events-none ${overscan ? '' : 'inset-0 w-full h-full'} ${className}`}
+    />
+  );
 }
 
 function HeatLegend({ count, where, className = '' }) {
@@ -560,14 +903,20 @@ function UnifiedWorkshopMap({
   onMouseMove,
   onMouseUp,
   minHeightClass = 'min-h-[540px]',
+  showAiPlan = false,
+  aiPlans = {},
+  planWidthM = 50,
 }) {
   const box = useElementSize(mapInnerRef);
+  const pxPerM = box.w ? box.w / planWidthM : 0;
+  const gridM = pxPerM ? niceMeters(pxPerM, 24) : 2;
   const camById = Object.fromEntries(cameras.map((c) => [c.id, c]));
   const located = events
     .filter((e) => e.status !== 'false_alarm' && e.ai_pos)
-    .map((ev) => ({ ev, pos: eventPlanPos(ev, camById[ev.camera_id], box) }))
+    .map((ev) => ({ ev, pos: eventPlanPos(ev, camById[ev.camera_id], box, pxPerM, aiPlans[ev.camera_id]) }))
     .filter((l) => l.pos);
   return (
+    <>
     <div
       onContextMenu={(e) => e.preventDefault()}
       onMouseDown={onMapMouseDown}
@@ -598,20 +947,29 @@ function UnifiedWorkshopMap({
           />
         )}
 
-        {/* Бесконечная координатная сетка без ограничивающих рамок */}
+        {/* Бесконечная координатная сетка без ограничивающих рамок; клетка — круглое число метров плана */}
         <div
           className="absolute -inset-[200%] w-[500%] h-[500%] opacity-15 pointer-events-none"
           style={{
             backgroundImage:
               'linear-gradient(to right, #64748b 1px, transparent 1px), linear-gradient(to bottom, #64748b 1px, transparent 1px)',
-            backgroundSize: '36px 36px',
+            backgroundSize: pxPerM ? `${gridM * pxPerM}px ${gridM * pxPerM}px` : '36px 36px',
           }}
         />
 
-        {/* ТЕПЛОВАЯ КАРТА РИСКОВ: все инциденты журнала (кроме ложных) в лучах обзора своих камер */}
+        {/* ИИ-КАРТЫ КАМЕР: обзор на полу, зоны, люди и техника в метрах от каждой камеры */}
+        {showAiPlan && (
+          <AiPlanLayer cameras={cameras} plans={aiPlans} box={box} pxPerM={pxPerM} selectedCamId={selectedCamId} />
+        )}
+
+        {/* ТЕПЛОВАЯ КАРТА РИСКОВ: все инциденты журнала (кроме ложных) — на полу, где они случились */}
         {showHeatmap && (
           <RiskHeatmap
-            radius={0.06}
+            // пятно ~1.5 м на полу: точка нарушения известна с точностью до шага человека;
+            // холст — с запасом в полплана вокруг: обзор камеры может уходить за край плана
+            radius={pxPerM && box.h ? Math.max(0.025, (1.5 * pxPerM) / Math.min(box.w, box.h)) : 0.06}
+            overscan={50}
+            maxPx={720}
             points={located.map(({ ev, pos }) => ({ x: pos.x, y: pos.y, w: riskWeight(ev) }))}
           />
         )}
@@ -656,6 +1014,8 @@ function UnifiedWorkshopMap({
         {cameras.map((cam) => {
           const isSelected = cam.id === selectedCamId;
           const totalAngle = (cam.mapDirection || 0) + (cam.panAngle || 0);
+          // с ИИ-картой условный луч заменяет обзор на полу: настоящий или примерный (пока нет калибровки)
+          const realFov = showAiPlan;
           return (
             <div
               key={cam.id}
@@ -694,7 +1054,7 @@ function UnifiedWorkshopMap({
                     />
                   </radialGradient>
                 </defs>
-                <g transform={`rotate(${totalAngle})`}>
+                <g transform={`rotate(${totalAngle})`} opacity={realFov ? 0 : 1}>
                   <path
                     d="M 0 0 L -28 -56 A 62 62 0 0 1 28 -56 Z"
                     fill={`url(#fov-grad-${cam.id})`}
@@ -745,6 +1105,17 @@ function UnifiedWorkshopMap({
 
       {showHeatmap && <HeatLegend count={located.length} where="на карте" className="absolute bottom-3 left-3 z-30" />}
     </div>
+    {pxPerM > 0 && (
+      <PlanLegend
+        pxPerM={pxPerM}
+        zoom={mapZoom}
+        gridM={gridM}
+        showAiPlan={showAiPlan}
+        aiCams={cameras.filter((c) => c.ai?.online)}
+        plans={aiPlans}
+      />
+    )}
+    </>
   );
 }
 
@@ -932,6 +1303,16 @@ function Dashboard({ user: currentUser, initial, onLogout }) {
   const [showHeatmap, setShowHeatmap] = useState(false);
   const [showAiMap, setShowAiMap] = useState(false);
   const [mapTick, setMapTick] = useState(0);
+  // ИИ-карты камер на плане цеха и масштаб плана (ширина карты в метрах — запоминается в этом браузере)
+  const [showAiPlan, setShowAiPlan] = useState(true);
+  const [aiPlans, setAiPlans] = useState({});
+  const [planWidthM, setPlanWidthM] = useState(() => {
+    try {
+      return Number(localStorage.getItem('linq.planWidthM')) || 50;
+    } catch {
+      return 50;
+    }
+  });
 
   const [camMenuOpen, setCamMenuOpen] = useState(false);
   const [camSearchQuery, setCamSearchQuery] = useState('');
@@ -1671,6 +2052,38 @@ function Dashboard({ user: currentUser, initial, onLogout }) {
     const t = setInterval(() => setMapTick((x) => x + 1), 1500);
     return () => clearInterval(t);
   }, [showAiMap]);
+
+  // ИИ-карты камер для плана цеха: мост ИИ отдаёт их одним запросом, опрашиваем раз в секунду, пока открыта карта
+  // (по калибровке камер из них и тепловая карта ставит нарушения на пол, даже со скрытым слоем ИИ-карты)
+  const plansUrl = aiOnlineCams.find((c) => c.ai?.plans_url)?.ai.plans_url;
+  useEffect(() => {
+    if (activeTab !== 'map_rules' || !plansUrl) return undefined;
+    let stopped = false;
+    const load = () =>
+      fetch(plansUrl)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => !stopped && d && setAiPlans(d))
+        .catch(() => {});
+    load();
+    const t = setInterval(load, 1000);
+    return () => {
+      stopped = true;
+      clearInterval(t);
+    };
+  }, [activeTab, plansUrl]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('linq.planWidthM', String(planWidthM));
+    } catch {
+      /* без хранилища масштаб просто не запомнится */
+    }
+  }, [planWidthM]);
+  const stepPlanWidth = (dir) => {
+    const i = PLAN_WIDTHS_M.findIndex((w) => w >= planWidthM);
+    const at = i < 0 ? PLAN_WIDTHS_M.length - 1 : i;
+    setPlanWidthM(PLAN_WIDTHS_M[Math.min(PLAN_WIDTHS_M.length - 1, Math.max(0, at + dir))]);
+  };
 
   const currentCamIdx = cameras.findIndex((c) => c.id === currentCamera.id);
   const goPrevCam = () => {
@@ -2930,6 +3343,40 @@ function Dashboard({ user: currentUser, initial, onLogout }) {
                       />
                     </label>
 
+                    <div
+                      className={`flex items-center gap-1 px-2 py-1 rounded-xl border text-xs ${themeSubCard}`}
+                      title="Ширина цеха на карте в метрах — задаёт масштаб ИИ-карт камер, сетки и линейки"
+                    >
+                      <Ruler size={13} className="text-sky-400" />
+                      <button
+                        type="button"
+                        onClick={() => stepPlanWidth(-1)}
+                        className="px-1 font-bold hover:text-sky-400 cursor-pointer"
+                        title="Крупнее (меньше метров по ширине)"
+                      >
+                        −
+                      </button>
+                      <span className="font-mono font-bold min-w-[44px] text-center">{planWidthM} м</span>
+                      <button
+                        type="button"
+                        onClick={() => stepPlanWidth(1)}
+                        className="px-1 font-bold hover:text-sky-400 cursor-pointer"
+                        title="Мельче (больше метров по ширине)"
+                      >
+                        +
+                      </button>
+                    </div>
+
+                    <button
+                      onClick={() => setShowAiPlan(!showAiPlan)}
+                      title="Что каждая камера видит на полу: обзор, зоны, люди и техника — от места и азимута камеры на плане"
+                      className={`px-3 py-1 rounded-xl text-xs font-semibold border flex items-center gap-1.5 cursor-pointer ${
+                        showAiPlan ? 'bg-sky-600 text-white border-sky-600' : themeSubCard
+                      }`}
+                    >
+                      <Radar size={13} /> ИИ-карта
+                    </button>
+
                     <button
                       onClick={() => setShowHeatmap(!showHeatmap)}
                       className={`px-3 py-1 rounded-xl text-xs font-semibold border flex items-center gap-1.5 cursor-pointer ${
@@ -2965,6 +3412,9 @@ function Dashboard({ user: currentUser, initial, onLogout }) {
                     onMouseMove={handleMapMouseMove}
                     onMouseUp={handleMapMouseUp}
                     minHeightClass="min-h-[560px]"
+                    showAiPlan={showAiPlan}
+                    aiPlans={plansUrl ? aiPlans : {}}
+                    planWidthM={planWidthM}
                   />
                 </div>
               </div>

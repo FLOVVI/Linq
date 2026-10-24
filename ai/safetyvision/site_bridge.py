@@ -308,6 +308,7 @@ class Bridge:
                 body = {"fps": p.get("fps", 0), "latency_ms": p.get("proc_ms_mean"), "backend": sp.site.backend,
                         "program": f"{'LinQ TPU' if sp.site.backend == 'tpu' else 'ONNX CPU'}: {prog}",
                         "stream_url": f"{self.public_url}/stream/{c['id']}", "map_url": f"{self.public_url}/map/{sp.site_id}.png",
+                        "plans_url": f"{self.public_url}/plans.json",
                         "frame": frame, "persons": p.get("persons", 0), "mapped": p.get("mapped", False),
                         "error": None if rt is not None and rt.last_pkt is not None else "нет кадров с источника"}
                 try:
@@ -404,6 +405,12 @@ class Bridge:
             fx = min(100.0, max(0.0, (x1 + x2) / 2 / w * 100))
             fy = min(100.0, max(0.0, ((y1 + y2) / 2 if ev["rule"] == "fire" else y2) / h * 100))
             ai_pos = {**plan_pos(cam, fx, fy), "fx": round(fx, 1), "fy": round(fy, 1)}
+            rt = sp.pipe.cams.get(ev["camera_id"])
+            pt = [[fx / 100 * w, fy / 100 * h]]
+            if rt is not None and rt.local is not None and rt.local.valid_image_points(pt)[0]:
+                # та же точка на полу в метрах от камеры (X — вправо, Y — вперёд): так сайт ставит её
+                # на ИИ-карту камеры на плане цеха
+                ai_pos["lx"], ai_pos["ly"] = (round(float(v), 2) for v in rt.local.to_map(pt)[0])
         who = [m.group(1) for t in ev.get("track_ids") or [] if (m := re.search(r"p(\d+)$", str(t)))]
         desc = f"ИИ: {ev['title']}" + (f", человек ID {who[-1]}" if who else "")
         if ev.get("zone_names"):
@@ -480,6 +487,18 @@ class Bridge:
             if sp is None:
                 raise HTTPException(404)
             return Response(cv2.imencode(".png", sp.pipe.minimap())[1].tobytes(), media_type="image/png")
+
+        @app.get("/plans.json")
+        def plans():
+            """ИИ-карта каждой камеры для плана цеха на сайте: ключ — id камеры на сайте, метры от камеры."""
+            out = {}
+            for sp in list(self.sites.values()):
+                for cid in list(sp.pipe.cams):
+                    try:
+                        out[cid[1:]] = sp.pipe.camera_floor(cid)
+                    except Exception as e:  # noqa: BLE001 — кадр обновился посреди чтения; карта придёт со следующим опросом
+                        out[cid[1:]] = {"mapped": False, "error": repr(e)}
+            return out
 
         return app
 
