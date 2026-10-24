@@ -9,3 +9,5 @@ frontend/dist/
 uploads/
 .pytest_cache/
 .venv/
+logs/
+.DS_Store

@@ -216,7 +216,7 @@ def patch_site(sid: int, b: SiteIn, _=Depends(manage)):
 CAM_COLS = {"name": "name", "cameraType": "camera_type", "panAngle": "pan_angle", "zoomLevel": "zoom_level",
             "autoPatrol": "auto_patrol", "rtsp_url": "rtsp_url", "is_active": "is_active", "rulesVector": "rules_vector",
             "mapPos": "map_pos", "zones": "zones", "site_id": "site_id"}
-EXTRA_KEYS = ("tiltAngle", "tpuProgram", "workers")   # нет колонок в схеме — хранятся в cameras.extra (jsonb)
+EXTRA_KEYS = ("tiltAngle", "tpuProgram", "workers", "mapDirection")   # нет колонок в схеме — хранятся в cameras.extra (jsonb)
 PTZ_KEYS = {"panAngle", "tiltAngle", "zoomLevel", "autoPatrol"}   # управление PTZ доступно всем, кто видит камеры
 
 
@@ -233,6 +233,7 @@ class CameraIn(BaseModel):
     tiltAngle: float = 0
     tpuProgram: Optional[str] = None
     workers: list[dict] = []
+    mapDirection: Optional[float] = None       # азимут камеры на карте цеха, градусы
 
 
 @app.get("/cameras")
@@ -276,6 +277,7 @@ class CameraPatch(BaseModel):
     tiltAngle: Optional[float] = None
     tpuProgram: Optional[str] = None
     workers: Optional[list[dict]] = None
+    mapDirection: Optional[float] = None
 
 
 @app.patch("/cameras/{cid}")  # частичное обновление: правила, зоны, позиция на карте, PTZ
@@ -499,16 +501,17 @@ def seed():
     if db.sites_list():
         return
     z = lambda i, t, label, x, y, w, h, sch="Круглосуточно": {"id": f"z-{i}", "type": t, "shape": "rect", "label": label, "schedule": sch, "rect": {"x": x, "y": y, "w": w, "h": h}}
-    for site, cam, ctype, vec, pos, zones in [
+    for n, (site, cam, ctype, vec, pos, zones) in enumerate([
         ("Участок №1 — Сборочный цех (ОПО А-1)", "Камера 01 • Линия конвейера", "dynamic", [0, 1, 1, 0, 1, 0, 1, 0], (22, 26),
          [z(1, "danger", "Робот-манипулятор", 56, 32, 32, 48), z(2, "attention", "Проход у конвейера", 10, 40, 30, 44, "08:00 – 20:00")]),
         ("Участок №2 — Склад и отгрузка (ОПО А-2)", "Камера 02 • Зона погрузчиков", "static", [1, 1, 0, 0, 0, 0, 1, 1], (52, 72),
          [z(3, "danger", "Проезд погрузчика", 25, 38, 48, 46, "08:00 – 12:00")]),
-        ("Участок №3 — Окрасочная и ГСМ (ОПО А-3)", "Камера 03 • Хим. блок", "dynamic", [0, 0, 0, 1, 1, 1, 1, 0], (80, 64), [])]:
+        ("Участок №3 — Окрасочная и ГСМ (ОПО А-3)", "Камера 03 • Хим. блок", "dynamic", [0, 0, 0, 1, 1, 1, 1, 0], (80, 64), [])]):
         sid = db.site_create(site, None)
         cid = db.camera_create({"code": "", "site_id": sid, "name": cam, "camera_type": ctype, "rtsp_url": f"rtsp://10.0.114.1{sid}:554/linq_stream_0{sid}",
                                 "rules_vector": vec, "map_pos": {"x": pos[0], "y": pos[1]}, "zones": zones,
-                                "extra": {"workers": [{"id": f"TRK-{sid}1", "label": f"ID #{sid}1 • Сотрудник", "x": 35, "y": 40, "w": 12, "h": 34, "ppeOk": True}]}})
+                                "extra": {"mapDirection": (125, -35, 45)[n],   # куда смотрит камера на карте цеха
+                                          "workers": [{"id": f"TRK-{sid}1", "label": f"ID #{sid}1 • Сотрудник", "x": 35, "y": 40, "w": 12, "h": 34, "ppeOk": True}]}})
         db.camera_update(cid, {"code": f"CAM-{cid:02d}"})
 
 

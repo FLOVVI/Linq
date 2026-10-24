@@ -189,6 +189,25 @@ class SitePipeline:
         self.bridge.log(f"[участок {self.site_id}] {c['code']}: правила и зоны обновлены")
 
 
+MAP_BOX_PX = (800, 560)   # типичный размер карты цеха на сайте: луч обзора камеры там рисуется в пикселях
+
+
+def plan_pos(cam: dict, fx: float | None, fy: float | None) -> dict:
+    """Точка кадра (fx, fy в %) -> точка на карте цеха (% карты) внутри луча обзора камеры.
+
+    Так же считает сайт (eventPlanPos в App.jsx): низ кадра — у камеры, верх — на дальнем краю луча,
+    левый/правый край кадра — края луча; направление — азимут камеры на карте + поворот PTZ."""
+    pos = cam.get("mapPos") or {"x": 50, "y": 50}
+    if fx is None or fy is None:
+        return {"x": pos["x"], "y": pos["y"]}
+    d = 0.3 + 0.7 * (1 - fy / 100)
+    fwd, lat = d * 54, (fx / 100 - 0.5) * 2 * d * 27
+    a = math.radians((cam.get("mapDirection") or 0) + (cam.get("panAngle") or 0))
+    dx, dy = lat * math.cos(a) + fwd * math.sin(a), lat * math.sin(a) - fwd * math.cos(a)
+    return {"x": round(min(98, max(2, pos["x"] + dx / MAP_BOX_PX[0] * 100)), 1),
+            "y": round(min(98, max(2, pos["y"] + dy / MAP_BOX_PX[1] * 100)), 1)}
+
+
 def _probe_size(src: Any) -> tuple[int, int] | None:
     if not isinstance(src, str) or "://" in src:
         return None  # поток: размер узнаем по первому кадру
@@ -214,6 +233,8 @@ class Bridge:
         self.site_ids: dict[str, int] = {}   # id события ИИ -> id события на сайте
         self.reviewed: set[tuple[str, str]] = set()
         self.repeats: set[str] = set()   # события повторных проходов зацикленной записи
+        # где в зацикленной записи уже были отправленные нарушения: (камера, правило) -> [(секунда ролика, x в кадре)]
+        self.spots: dict[tuple[str, str], list[tuple[float, float]]] = {}
         self.cache = self.base_dir / self.template.get("events", {}).get("output_dir", "runs/site_bridge") / "videos"
         self.cache.mkdir(parents=True, exist_ok=True)
         self.lock = threading.Lock()
@@ -264,6 +285,8 @@ class Bridge:
                 if sid in self.sites:
                     self.log(f"[участок {sid}] камеры или источники изменились — перезапуск")
                     self.sites.pop(sid).stop()
+                ids = {f"c{c['id']}" for c in group}   # новый источник — новая запись, прежние места не в счёт
+                self.spots = {k: v for k, v in self.spots.items() if k[0] not in ids}
                 sp = SitePipeline(self, sid, group)
                 with self.lock:
                     self.sites[sid] = sp
@@ -305,13 +328,31 @@ class Bridge:
                     self.log(f"событие {aid}: {st} оператором → review/{st}")
 
     # ------------------------------------------------------------- события
+    def _is_repeat(self, sp: SitePipeline, ev: dict) -> bool:
+        """Запись крутится по кругу: нарушение повторного прохода — то же самое, в журнал его не дублируем.
+
+        Повтор — то же правило, то же место ролика (±3 с) и та же часть кадра, что у уже отправленного события.
+        Сравниваем по месту, а не по номеру прохода: на медленном компьютере первый проход идёт с пропуском кадров,
+        и пропущенное в нём нарушение должно попасть в журнал со второго прохода."""
+        rt = sp.pipe.cams.get(ev["camera_id"])
+        src = None if rt is None else rt.source
+        dur = getattr(src, "duration", 0) or 0
+        if not dur or not getattr(src, "loop", False):
+            return False
+        pos = (ev["start_ts"] - src.t0 - src.offset) % dur
+        w = (sp.sizes.get(ev["camera_id"]) or (1280, 720))[0]
+        fx = (ev["bbox"][0] + ev["bbox"][2]) / 2 / w if ev.get("bbox") else 0.5
+        seen = self.spots.setdefault((ev["camera_id"], ev["rule"]), [])
+        if getattr(src, "loops", 0) > 0 and any(
+                min(abs(p - pos), dur - abs(p - pos)) < 3.0 and abs(x - fx) < 0.2 for p, x in seen):
+            return True
+        seen.append((pos, fx))
+        return False
+
     def on_event(self, sp: SitePipeline, kind: str, ev: dict) -> None:
-        if kind == "started":
-            # запись крутится по кругу: нарушения повторного прохода — те же самые, в журнал их не дублируем
-            rt = sp.pipe.cams.get(ev["camera_id"])
-            if rt is not None and getattr(rt.source, "loops", 0) > 0:
-                self.repeats.add(ev["id"])
-                return
+        if kind == "started" and self._is_repeat(sp, ev):
+            self.repeats.add(ev["id"])
+            return
         if kind in ("started", "ended") and ev["id"] not in self.repeats:
             threading.Thread(target=self._send, args=(sp, kind, ev), daemon=True).start()
 
@@ -355,12 +396,14 @@ class Bridge:
         cam_id = int(ev["camera_id"][1:])
         cam = next((c for c in sp.cams if c["id"] == cam_id), {})
         w, h = sp.sizes.get(ev["camera_id"]) or (1280, 720)
-        pos = cam.get("mapPos") or {"x": 50, "y": 50}
-        ai_pos = {"x": pos["x"], "y": pos["y"]}
-        if ev.get("bbox"):  # точка на плане: позиция камеры + смещение по месту нарушителя в кадре
+        ai_pos = plan_pos(cam, None, None)
+        if ev.get("bbox"):
+            # fx, fy — где в кадре нарушение (%, у человека — точка ног, у огня — центр очага): по ним сайт строит
+            # тепловую карту кадра; x, y — та же точка на карте цеха, в луче обзора камеры
             x1, y1, x2, y2 = ev["bbox"]
-            ai_pos = {"x": round(min(97, max(3, pos["x"] + ((x1 + x2) / 2 / w - 0.5) * 16))),
-                      "y": round(min(97, max(3, pos["y"] + (y2 / h - 0.5) * 12)))}
+            fx = min(100.0, max(0.0, (x1 + x2) / 2 / w * 100))
+            fy = min(100.0, max(0.0, ((y1 + y2) / 2 if ev["rule"] == "fire" else y2) / h * 100))
+            ai_pos = {**plan_pos(cam, fx, fy), "fx": round(fx, 1), "fy": round(fy, 1)}
         who = [m.group(1) for t in ev.get("track_ids") or [] if (m := re.search(r"p(\d+)$", str(t)))]
         desc = f"ИИ: {ev['title']}" + (f", человек ID {who[-1]}" if who else "")
         if ev.get("zone_names"):
