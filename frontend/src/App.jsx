@@ -1368,6 +1368,8 @@ function Dashboard({ user: currentUser, initial, onLogout }) {
   const [newCamInput, setNewCamInput] = useState('');
   const [newCamTypeInput, setNewCamTypeInput] = useState('dynamic');
   const [newRtspInput, setNewRtspInput] = useState('');
+  const [camToDelete, setCamToDelete] = useState(null);   // камера в окне подтверждения удаления
+  const [deleteState, setDeleteState] = useState(null);   // 'deleting' или текст ошибки
 
   const activeCollisionKeyRef = useRef(null);
 
@@ -1727,6 +1729,8 @@ function Dashboard({ user: currentUser, initial, onLogout }) {
 
   const commentTimer = useRef(null);
   const syncedRef = useRef(Object.fromEntries((initial.cameras || INITIAL_CAMERAS_FALLBACK).map((c) => [c.id, snap(c)])));
+  const serverCamIdsRef = useRef(new Set((initial.cameras || []).map((c) => c.id)));   // камеры из прошлого опроса сервера
+  const goneCamIdsRef = useRef(new Set());   // удалённые камеры: их события не возвращаем из запоздавших ответов журнала
   const [statsHourly, setStatsHourly] = useState({});
   const firstSettingsRun = useRef(true);
 
@@ -1758,7 +1762,7 @@ function Dashboard({ user: currentUser, initial, onLogout }) {
             }
             const merged = fresh.map((f) => (local[f.id] ? { ...f, description: local[f.id].description } : f));
             const ids = new Set(merged.map((e) => e.id));
-            return [...merged, ...prev.filter((e) => !ids.has(e.id))];
+            return [...merged, ...prev.filter((e) => !ids.has(e.id))].filter((e) => !goneCamIdsRef.current.has(e.camera_id));
           });
         })
         .catch(() => {});
@@ -1773,9 +1777,15 @@ function Dashboard({ user: currentUser, initial, onLogout }) {
         .cameras()
         .then((list) => {
           const byId = Object.fromEntries(list.map((c) => [c.id, c]));
+          // была на сервере в прошлый раз, а теперь нет — её удалили (в том числе из другого окна);
+          // только что созданную камеру, которой ещё не было в списке, не трогаем
+          const gone = new Set([...serverCamIdsRef.current].filter((id) => !byId[id]));
+          serverCamIdsRef.current = new Set(list.map((c) => c.id));
+          gone.forEach((id) => goneCamIdsRef.current.add(id));
+          if (gone.size) setEvents((prev) => prev.filter((e) => !gone.has(e.camera_id)));
           setCameras((prev) => {
             const known = new Set(prev.map((c) => c.id));
-            const next = prev.map((c) =>
+            const next = prev.filter((c) => !gone.has(c.id)).map((c) =>
               byId[c.id] ? { ...c, ...Object.fromEntries(LIVE.map((k) => [k, byId[c.id][k]])) } : c
             );
             const added = list.filter((c) => !known.has(c.id));
@@ -1864,6 +1874,25 @@ function Dashboard({ user: currentUser, initial, onLogout }) {
     setNewSiteInput('');
     setNewCamInput('');
     setNewRtspInput('');
+  };
+
+  const handleDeleteCamera = (cam) => {
+    if (!currentUser.canEditRules || cameras.length < 2) return;
+    const drop = () => {
+      delete syncedRef.current[cam.id];
+      serverCamIdsRef.current.delete(cam.id);
+      goneCamIdsRef.current.add(cam.id);
+      setCameras((prev) => prev.filter((c) => c.id !== cam.id));
+      setEvents((prev) => prev.filter((e) => e.camera_id !== cam.id));   // на сервере они удалены вместе с камерой
+      if (selectedCamId === cam.id) setSelectedCamId(cameras.find((c) => c.id !== cam.id).id);
+      setCamToDelete(null);
+      setDeleteState(null);
+    };
+    setDeleteState('deleting');
+    api
+      .deleteCamera(cam.id)
+      .then(drop)
+      .catch((err) => (apiBacked ? setDeleteState(err.message) : drop()));   // без сервера (демо-данные) — только локально
   };
 
   const handleProcessEvent = (eventId, newStatus) => {
@@ -2138,6 +2167,47 @@ function Dashboard({ user: currentUser, initial, onLogout }) {
               events={events}
               currentUser={currentUser}
             />
+          </div>
+        </div>
+      )}
+
+      {/* МОДАЛЬНОЕ ОКНО: ПОДТВЕРЖДЕНИЕ УДАЛЕНИЯ КАМЕРЫ */}
+      {camToDelete && (
+        <div
+          className="print:hidden fixed inset-0 bg-black/75 backdrop-blur-xs z-50 flex items-center justify-center p-4"
+          onClick={() => deleteState !== 'deleting' && setCamToDelete(null)}
+        >
+          <div className={`max-w-md w-full rounded-2xl border p-6 shadow-2xl ${themeCard}`} onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-sm font-bold flex items-center gap-2">
+              <Trash2 size={16} className="text-rose-500" />
+              Удалить камеру {camToDelete.code}?
+            </h3>
+            <p className="mt-3 text-xs font-medium">
+              {camToDelete.name} · {camToDelete.site_name}
+            </p>
+            <p className={`mt-2 text-xs leading-relaxed ${textMuted}`}>
+              Камера исчезнет с карты цеха, ИИ-модуль перестанет её обрабатывать. Вместе с ней из журнала удалятся все её
+              инциденты с кадрами и клипами, а участок — если в нём больше нет камер. Отменить это нельзя.
+            </p>
+            {deleteState && deleteState !== 'deleting' && (
+              <p className="mt-3 text-xs text-rose-500 font-medium">Не удалось удалить: {deleteState}</p>
+            )}
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                onClick={() => setCamToDelete(null)}
+                disabled={deleteState === 'deleting'}
+                className="px-3 py-1.5 rounded-lg bg-slate-500/20 hover:bg-slate-500/30 disabled:opacity-40 text-xs font-semibold cursor-pointer"
+              >
+                Отмена
+              </button>
+              <button
+                onClick={() => handleDeleteCamera(camToDelete)}
+                disabled={deleteState === 'deleting'}
+                className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white text-xs font-semibold cursor-pointer"
+              >
+                {deleteState === 'deleting' ? 'Удаляю…' : 'Удалить камеру'}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -3502,6 +3572,47 @@ function Dashboard({ user: currentUser, initial, onLogout }) {
                 </div>
 
                 <div className="pt-4 border-t border-inherit">
+                  <h3 className="text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 mb-2">
+                    <Camera size={14} className="text-sky-400" />
+                    Камеры на карте цеха: {cameras.length}
+                  </h3>
+                  <div className="max-h-44 overflow-y-auto space-y-1.5 pr-1 mb-4">
+                    {cameras.map((cam) => (
+                      <div
+                        key={cam.id}
+                        onClick={() => setSelectedCamId(cam.id)}
+                        className={`px-2.5 py-1.5 rounded-xl border flex items-center gap-2 cursor-pointer transition ${
+                          cam.id === currentCamera.id ? 'border-sky-500/60 bg-sky-500/10' : `${themeSubCard} hover:border-slate-500`
+                        }`}
+                      >
+                        <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-700 text-slate-200 shrink-0">
+                          {cam.code}
+                        </span>
+                        <span className="text-[11px] font-medium truncate" title={cam.name}>
+                          {cam.name}
+                        </span>
+                        <span className={`text-[10px] truncate hidden sm:inline ${textMuted}`} title={cam.site_name}>
+                          {cam.site_name}
+                        </span>
+                        {currentUser.canEditRules && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDeleteState(null);
+                              setCamToDelete(cam);
+                            }}
+                            disabled={cameras.length < 2}
+                            title={cameras.length < 2 ? 'Единственную камеру удалить нельзя' : `Удалить ${cam.code}`}
+                            className="ml-auto shrink-0 p-1.5 rounded-lg text-rose-500 hover:bg-rose-500/15 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
                   <div className="flex items-center justify-between mb-3">
                     <h3 className="text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
                       <Plus size={14} className="text-sky-400" />

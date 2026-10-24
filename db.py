@@ -121,6 +121,7 @@ def site_create(name, rules): return _ins("sites", {"name": name, "rules": rules
 def site_update(sid, d): _upd("sites", sid, d)      # name, rules
 def site_get(sid): return _one("SELECT * FROM sites WHERE id=%s", (sid,))
 def site_by_name(name): return _one("SELECT * FROM sites WHERE name=%s", (name,))
+def site_delete(sid): _run("DELETE FROM sites WHERE id=%s", (sid,))
 def sites_list(): return _all("SELECT * FROM sites ORDER BY id")
 
 

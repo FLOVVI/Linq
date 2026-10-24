@@ -300,10 +300,29 @@ def patch_camera(cid: int, b: CameraPatch, u=Depends(view)):
     return cam_out(db.camera_get(cid))
 
 
-@app.delete("/cameras/{cid}")
+def remove_upload(url):  # файл из uploads/ по его ссылке; ссылки вне uploads/ (в т. ч. с «..») не трогаем
+    root = os.path.abspath("uploads")
+    p = os.path.abspath((url or "").lstrip("/"))
+    if url and p.startswith(root + os.sep) and os.path.isfile(p):
+        try:
+            os.remove(p)
+        except OSError:
+            pass
+
+
+@app.delete("/cameras/{cid}")  # вместе с камерой: её события (каскадом в БД) с кадрами и клипами, загруженное видео, пустой участок
 def del_camera(cid: int, _=Depends(manage)):
+    cam = db.camera_get(cid)
+    if not cam:
+        raise HTTPException(404)
+    evs = db.events_list(None, cid, 0, 1_000_000)
     db.camera_delete(cid)
-    return {"ok": True}
+    AI_STATUS.pop(cid, None)
+    if not any(c["site_id"] == cam["site_id"] for c in db.cameras_list()):
+        db.site_delete(cam["site_id"])
+    for url in [cam["rtsp_url"]] + [e[k] for e in evs for k in ("frame_url", "clip_url", "ai_map_url")]:
+        remove_upload(url)
+    return {"ok": True, "events_deleted": len(evs)}
 
 
 VIDEO_EXT = {".mp4", ".webm", ".mov", ".avi", ".mkv", ".mpg", ".m4v"}
