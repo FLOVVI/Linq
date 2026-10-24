@@ -175,11 +175,15 @@ class CloudTpuBackend(Backend):
                      PyTask, deserialize, serialize)
         self._pika = pika
         login = login or os.environ.get("LINQ_LOGIN") or getpass.getuser()
-        prog_dir = os.path.join("/auto/cache", login)
-        dst = os.path.join(prog_dir, os.path.basename(program_path))
-        # воркер читает программу только из /auto/cache/<LOGIN>
-        if not os.path.exists(dst) or os.path.getsize(dst) != os.path.getsize(program_path):
-            shutil.copy(program_path, dst)
+        remote = os.environ.get("LINQ_REMOTE_CACHE")  # программы уже загружены на сервер (запуск с другой машины по VPN)
+        if remote:
+            dst = remote.rstrip("/") + "/" + os.path.basename(program_path)
+        else:
+            prog_dir = os.path.join("/auto/cache", login)
+            dst = os.path.join(prog_dir, os.path.basename(program_path))
+            # воркер читает программу только из /auto/cache/<LOGIN>
+            if not os.path.exists(dst) or os.path.getsize(dst) != os.path.getsize(program_path):
+                shutil.copy(program_path, dst)
         self.uri = f"file://{dst}?raw=False"
         self.timeout_s = float(os.environ.get("LINQ_TIMEOUT", timeout_s))
         self.retries = int(os.environ.get("LINQ_RETRIES", 1))

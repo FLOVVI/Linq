@@ -1,3 +1,7 @@
 .env
-docker-compose
-.idea/ 
+.idea/
+**/__pycache__/
+*.pyc
+ai/runs/
+localdb/
+frontend/node_modules/

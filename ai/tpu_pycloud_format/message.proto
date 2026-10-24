@@ -1,0 +1,31 @@
+// usage:
+// protoc --python_out=. message.proto
+// protoc --cpp_out=. message.proto
+
+// https://lindevs.com/install-protoc-on-ubuntu
+
+syntax = "proto3";
+
+import "google/protobuf/timestamp.proto";
+
+message Array {
+  string dtype = 1;
+  repeated int32 shape = 2;
+  bytes byte_data = 3;
+}
+
+message MetadataDict {
+  map<string, Array> items = 1;
+}
+
+message Task {
+  map<string, Array> dict_data = 1;
+  repeated MetadataDict list_metadata = 2;
+  string data_path = 3;
+  string worker_pid = 4;
+  string thread_name = 5;
+  float inference_time = 6;
+  int32 status_code = 7;
+  string error_message = 8;
+  google.protobuf.Timestamp inference_opening_timestamp = 9;
+}
