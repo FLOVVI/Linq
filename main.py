@@ -1,4 +1,4 @@
-import base64, hashlib, io, json, os, secrets, time, zipfile
+import base64, faulthandler, hashlib, io, json, os, secrets, time, zipfile
 from collections import Counter
 from datetime import datetime
 from typing import Literal, Optional
@@ -7,7 +7,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-import db
+
+faulthandler.dump_traceback_later(60)   # запуск дольше минуты — стеки потоков в лог: видно, где именно ждём
+import db  # noqa: E402
 
 VIEW_ROLES = {1, 2, 3, 7}     # мониторинг, аналитика, карта
 MANAGE_ROLES = {1, 7}         # участки, камеры, правила, зоны, пользователи (canEditRules на фронте)
@@ -516,3 +518,4 @@ def seed():
 
 
 seed()
+faulthandler.cancel_dump_traceback_later()

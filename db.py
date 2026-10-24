@@ -3,7 +3,7 @@
 Функции принимают/возвращают dict/list/None; jsonb — Python-объекты, timestamptz — строки 'YYYY-MM-DD HH:MM:SS'.
 Имена колонок в *_create/*_update приходят только из белых списков в main.py, значения — только параметрами.
 """
-import os, threading
+import os, re, threading, time
 from datetime import datetime
 from zoneinfo import ZoneInfo
 import psycopg
@@ -24,13 +24,30 @@ def _url():
                 return line.split("=", 1)[1].strip().strip("'\"")
     except OSError:
         pass
-    return "postgresql://linq_user:linq_password@localhost:5432/linq_db"
+    return "postgresql://linq_user:linq_password@127.0.0.1:5432/linq_db"
+
+
+def _connect(url, attempts=3):
+    # localhost → 127.0.0.1: на Windows localhost сначала пробуется по IPv6 (::1), а локальная БД слушает только IPv4;
+    # таймаут — чтобы зависшая БД давала ошибку в логе, а не тишину
+    url = re.sub(r"(@|//)localhost(?=[:/])", r"\g<1>127.0.0.1", url, count=1)
+    where = url.rsplit("@", 1)[-1].split("?")[0]
+    for i in range(1, attempts + 1):
+        print(f"БД: подключение к {where}…", flush=True)
+        try:
+            return psycopg.connect(url, row_factory=dict_row, autocommit=True, connect_timeout=10)
+        except psycopg.OperationalError as e:
+            err = str(e).strip().splitlines()[0] if str(e).strip() else type(e).__name__
+            print(f"БД: не отвечает ({i}/{attempts}): {err}", flush=True)
+            time.sleep(2)
+    raise SystemExit(f"БД недоступна по адресу {where} — бэкенд не может работать")
 
 
 _lock = threading.RLock()
-_conn = psycopg.connect(_url(), row_factory=dict_row, autocommit=True)
+_conn = _connect(_url())
 _conn.execute("SELECT set_config('TimeZone', %s, false)", (os.environ.get("APP_TZ", "Europe/Moscow"),))
 if not _conn.execute("SELECT to_regclass('public.users') AS t").fetchone()["t"]:
+    print("БД: первый запуск — создаю таблицы…", flush=True)
     _conn.execute(open(os.path.join(ROOT, "schema.sql"), encoding="utf-8").read())
 # миграции для БД, созданных по прежней схеме (docker volume): каждая безопасна при повторе
 for _sql in ["ALTER TABLE sessions ADD COLUMN IF NOT EXISTS expires_at timestamptz",
@@ -44,6 +61,7 @@ for _sql in ["ALTER TABLE sessions ADD COLUMN IF NOT EXISTS expires_at timestamp
              "ALTER TABLE events ADD COLUMN IF NOT EXISTS ai_event_id text",
              "CREATE UNIQUE INDEX IF NOT EXISTS ux_events_ai_id ON events(ai_event_id)"]:
     _conn.execute(_sql)
+print("БД: готова", flush=True)
 
 
 _TZ = ZoneInfo(os.environ.get("APP_TZ", "Europe/Moscow"))

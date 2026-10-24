@@ -5,7 +5,7 @@ psycopg[binary]
 tzdata
 # ИИ-модуль (папка ai/) на ноутбуке/сервере без LinQ, инференс ONNX на CPU:
 numpy
-opencv-python
+opencv-python-headless   # без GUI: на Linux не нужен libGL
 onnxruntime
 pyyaml
 scipy
