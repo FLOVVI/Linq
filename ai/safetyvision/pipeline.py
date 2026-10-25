@@ -28,7 +28,7 @@ from .events.recorder import ClipRecorder
 from .events.sinks import EventStore, JsonlSink, WebhookSink
 from .fusion import GlobalTracker
 from .geometry.autocalib import CalibrationCollector, SyncedPositions, align_cameras
-from .geometry.homography import CameraModel, GroundMapping, rigid2d
+from .geometry.homography import CameraModel, GroundMapping, apply_h, clip_below, rigid2d
 from .geometry.mapbuilder import MapBuilder, MapCanvas
 from .geometry.zones import DynamicAnchor, ZoneIndex
 from .analytics.crops import head_crop
@@ -769,6 +769,42 @@ class Pipeline:
         if not cam.mapping.valid_image_points(pts).all():
             return None
         return cam.mapping.to_map(pts).round(2).tolist()
+
+    def camera_floor(self, cam_id: str) -> dict[str, Any]:
+        """Обзор одной камеры на полу в её собственной системе, м: X — вправо, Y — вперёд от точки пола под камерой.
+
+        Сайт ставит его на свой план от места и азимута камеры: ИИ-карта каждой камеры ложится на карту цеха
+        в едином масштабе, даже когда камеры участка между собой не совмещены."""
+        cam = self.cams[cam_id]
+        if cam.local is None or cam.mapping is None or not cam.frame_hw:
+            return {"mapped": False, "calibration": cam.calib_info or None}
+        to_local = cam.local.H @ np.linalg.inv(cam.mapping.H)  # карта участка -> система камеры
+
+        def loc(xy) -> list[float]:
+            return [round(float(v), 2) for v in apply_h(to_local, xy)[0]]
+
+        rng = self.site.map.max_range_m
+        top = cam.local.floor_top(cam.frame_hw, rng)
+        ts = cam.last_pkt.ts if cam.last_pkt else time.time()
+        zones = []
+        for z in self.site.zones:
+            if z.polygon_px and z.camera == cam_id:
+                pts = clip_below(z.polygon_px, top)  # часть зоны выше горизонта на пол не ложится
+                if len(pts) < 3 or not cam.local.valid_image_points(pts).all():
+                    continue
+                poly = cam.local.to_map(pts)
+            elif z.polygon and z.camera in (None, cam_id):
+                poly = apply_h(to_local, z.polygon)
+            else:
+                continue
+            zones.append({"id": z.id, "name": z.name, "kind": z.kind, "active": z.active_at(ts),
+                          "polygon": poly.round(2).tolist()})
+        return {"mapped": True, "range_m": rng, "camera": cam.local.camera.to_dict() if cam.local.camera else None,
+                "footprint": cam.local.footprint(cam.frame_hw, rng).round(2).tolist(), "zones": zones,
+                "people": [{"xy": loc(p["map_xy"]), "status": p["status"], "label": p["label"]}
+                           for p in cam.last_state.get("persons", []) if p.get("map_xy") is not None],
+                "vehicles": [{"xy": loc(v["map_seg"].mean(0)), "kind": v["kind"], "speed_mps": v["speed_mps"]}
+                             for v in cam.vehicles if v["map_seg"] is not None]}
 
     def minimap(self, long_side: int = 900) -> np.ndarray:
         st = self.map_state()

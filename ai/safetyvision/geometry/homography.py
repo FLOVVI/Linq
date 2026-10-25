@@ -17,6 +17,19 @@ def apply_h(H: np.ndarray, pts: np.ndarray) -> np.ndarray:
     return p[:, :2] / w
 
 
+def clip_below(pts, v: float) -> np.ndarray:
+    """Часть многоугольника кадра ниже строки v (отсечение Сазерленда — Ходжмена по одной полуплоскости)."""
+    pts = np.asarray(pts, np.float64).reshape(-1, 2)
+    out = []
+    for i in range(len(pts)):
+        a, b = pts[i - 1], pts[i]
+        if (a[1] >= v) != (b[1] >= v):
+            out.append(a + (v - a[1]) / (b[1] - a[1]) * (b - a))
+        if b[1] >= v:
+            out.append(b)
+    return np.asarray(out, np.float64).reshape(-1, 2)
+
+
 def rigid2d(theta: float, tx: float, ty: float) -> np.ndarray:
     c, s = math.cos(theta), math.sin(theta)
     return np.array([[c, -s, tx], [s, c, ty], [0, 0, 1]], np.float64)
@@ -117,18 +130,22 @@ class GroundMapping:
             ok &= pts[:, 1] > self.camera.horizon_v() + 0.02 * (self.frame_hw[0] if self.frame_hw else 1000)
         return ok
 
+    def floor_top(self, frame_hw: tuple[int, int], max_range_m: float | None = None) -> float:
+        """Верхняя строка кадра, до которой пол ещё берём: горизонт с запасом или дальность max_range_m."""
+        h = frame_hw[0]
+        if self.camera is None:
+            return 0.0
+        cam = self.camera
+        top = max(0.0, cam.horizon_v() + 0.03 * h)
+        # строка кадра, соответствующая дальности rng по оси камеры
+        ang = math.atan2(cam.height, max_range_m or self.max_range_m)
+        v_far = cam.cy + cam.f * math.tan(ang - cam.tilt)
+        return max(top, min(v_far, h - 2))
+
     def footprint(self, frame_hw: tuple[int, int], max_range_m: float | None = None, n: int = 24) -> np.ndarray:
         """Полигон (метры карты), который камера видит на полу: нижняя часть кадра до горизонта/дальности."""
         h, w = frame_hw
-        top = 0.0
-        if self.camera is not None:
-            top = max(0.0, self.camera.horizon_v() + 0.03 * h)
-            rng = max_range_m or self.max_range_m
-            # строка кадра, соответствующая дальности rng по оси камеры
-            cam = self.camera
-            ang = math.atan2(cam.height, rng)
-            v_far = cam.cy + cam.f * math.tan(ang - cam.tilt)
-            top = max(top, min(v_far, h - 2))
+        top = self.floor_top(frame_hw, max_range_m)
         xs = np.linspace(0, w - 1, n)
         border = np.r_[np.c_[xs, np.full(n, h - 1)],  # низ слева направо
                        np.c_[np.full(n, w - 1), np.linspace(h - 1, top, n)],

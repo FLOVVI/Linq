@@ -33,6 +33,7 @@ export const api = {
   cameras: () => req('GET', '/cameras'),
   addCamera: (b) => req('POST', '/cameras', b),
   patchCamera: (id, b) => req('PATCH', `/cameras/${id}`, b),
+  deleteCamera: (id) => req('DELETE', `/cameras/${id}`),
   events: (sinceId = 0) => req('GET', `/events?since_id=${sinceId}`),
   createEvent: (b) => req('POST', '/events', b),
   processEvent: (id, status) => req('PATCH', `/events/${id}/process`, { status }),

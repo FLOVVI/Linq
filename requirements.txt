@@ -5,11 +5,14 @@ psycopg[binary]
 tzdata
 # ИИ-модуль (папка ai/) на ноутбуке/сервере без LinQ, инференс ONNX на CPU:
 numpy
-opencv-python
+opencv-python-headless   # без GUI: на Linux не нужен libGL
 onnxruntime
 pyyaml
 scipy
 pillow
 pytest
 # На сервере LinQ ставьте ai/requirements-linq.txt: там окружение TPU и numpy 1.x уже есть.
-# pika — только для облачного инференса LinQ TPU (--backend tpu), на сервере LinQ уже установлен
+# Облачный инференс LinQ TPU по VPN (--backend tpu без платы в компьютере); на сервере LinQ уже установлен.
+# Формат сообщений облака (tpu_pycloud_format) лежит в проекте, в ai/tpu_pycloud_format; ему нужен protobuf.
+pika
+protobuf

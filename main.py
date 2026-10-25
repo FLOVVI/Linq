@@ -1,4 +1,4 @@
-import base64, hashlib, io, json, os, secrets, time, zipfile
+import base64, faulthandler, hashlib, io, json, os, secrets, time, zipfile
 from collections import Counter
 from datetime import datetime
 from typing import Literal, Optional
@@ -7,7 +7,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-import db
+
+faulthandler.dump_traceback_later(60)   # запуск дольше минуты — стеки потоков в лог: видно, где именно ждём
+import db  # noqa: E402
 
 VIEW_ROLES = {1, 2, 3, 7}     # мониторинг, аналитика, карта
 MANAGE_ROLES = {1, 7}         # участки, камеры, правила, зоны, пользователи (canEditRules на фронте)
@@ -216,7 +218,7 @@ def patch_site(sid: int, b: SiteIn, _=Depends(manage)):
 CAM_COLS = {"name": "name", "cameraType": "camera_type", "panAngle": "pan_angle", "zoomLevel": "zoom_level",
             "autoPatrol": "auto_patrol", "rtsp_url": "rtsp_url", "is_active": "is_active", "rulesVector": "rules_vector",
             "mapPos": "map_pos", "zones": "zones", "site_id": "site_id"}
-EXTRA_KEYS = ("tiltAngle", "tpuProgram", "workers")   # нет колонок в схеме — хранятся в cameras.extra (jsonb)
+EXTRA_KEYS = ("tiltAngle", "tpuProgram", "workers", "mapDirection")   # нет колонок в схеме — хранятся в cameras.extra (jsonb)
 PTZ_KEYS = {"panAngle", "tiltAngle", "zoomLevel", "autoPatrol"}   # управление PTZ доступно всем, кто видит камеры
 
 
@@ -233,6 +235,7 @@ class CameraIn(BaseModel):
     tiltAngle: float = 0
     tpuProgram: Optional[str] = None
     workers: list[dict] = []
+    mapDirection: Optional[float] = None       # азимут камеры на карте цеха, градусы
 
 
 @app.get("/cameras")
@@ -276,6 +279,7 @@ class CameraPatch(BaseModel):
     tiltAngle: Optional[float] = None
     tpuProgram: Optional[str] = None
     workers: Optional[list[dict]] = None
+    mapDirection: Optional[float] = None
 
 
 @app.patch("/cameras/{cid}")  # частичное обновление: правила, зоны, позиция на карте, PTZ
@@ -296,10 +300,29 @@ def patch_camera(cid: int, b: CameraPatch, u=Depends(view)):
     return cam_out(db.camera_get(cid))
 
 
-@app.delete("/cameras/{cid}")
+def remove_upload(url):  # файл из uploads/ по его ссылке; ссылки вне uploads/ (в т. ч. с «..») не трогаем
+    root = os.path.abspath("uploads")
+    p = os.path.abspath((url or "").lstrip("/"))
+    if url and p.startswith(root + os.sep) and os.path.isfile(p):
+        try:
+            os.remove(p)
+        except OSError:
+            pass
+
+
+@app.delete("/cameras/{cid}")  # вместе с камерой: её события (каскадом в БД) с кадрами и клипами, загруженное видео, пустой участок
 def del_camera(cid: int, _=Depends(manage)):
+    cam = db.camera_get(cid)
+    if not cam:
+        raise HTTPException(404)
+    evs = db.events_list(None, cid, 0, 1_000_000)
     db.camera_delete(cid)
-    return {"ok": True}
+    AI_STATUS.pop(cid, None)
+    if not any(c["site_id"] == cam["site_id"] for c in db.cameras_list()):
+        db.site_delete(cam["site_id"])
+    for url in [cam["rtsp_url"]] + [e[k] for e in evs for k in ("frame_url", "clip_url", "ai_map_url")]:
+        remove_upload(url)
+    return {"ok": True, "events_deleted": len(evs)}
 
 
 VIDEO_EXT = {".mp4", ".webm", ".mov", ".avi", ".mkv", ".mpg", ".m4v"}
@@ -499,17 +522,19 @@ def seed():
     if db.sites_list():
         return
     z = lambda i, t, label, x, y, w, h, sch="Круглосуточно": {"id": f"z-{i}", "type": t, "shape": "rect", "label": label, "schedule": sch, "rect": {"x": x, "y": y, "w": w, "h": h}}
-    for site, cam, ctype, vec, pos, zones in [
-        ("Участок №1 — Сборочный цех (ОПО А-1)", "Камера 01 • Линия конвейера", "dynamic", [0, 1, 1, 0, 1, 0, 1, 0], (22, 26),
+    for n, (site, cam, ctype, vec, pos, zones) in enumerate([
+        ("Участок №1 — Сборочный цех (ОПО А-1)", "Камера 01 • Линия конвейера", "dynamic", [0, 1, 1, 0, 1, 0, 1, 0], (6, 30),
          [z(1, "danger", "Робот-манипулятор", 56, 32, 32, 48), z(2, "attention", "Проход у конвейера", 10, 40, 30, 44, "08:00 – 20:00")]),
-        ("Участок №2 — Склад и отгрузка (ОПО А-2)", "Камера 02 • Зона погрузчиков", "static", [1, 1, 0, 0, 0, 0, 1, 1], (52, 72),
+        ("Участок №2 — Склад и отгрузка (ОПО А-2)", "Камера 02 • Зона погрузчиков", "static", [1, 1, 0, 0, 0, 0, 1, 1], (62, 90),
          [z(3, "danger", "Проезд погрузчика", 25, 38, 48, 46, "08:00 – 12:00")]),
-        ("Участок №3 — Окрасочная и ГСМ (ОПО А-3)", "Камера 03 • Хим. блок", "dynamic", [0, 0, 0, 1, 1, 1, 1, 0], (80, 64), [])]:
+        ("Участок №3 — Окрасочная и ГСМ (ОПО А-3)", "Камера 03 • Хим. блок", "dynamic", [0, 0, 0, 1, 1, 1, 1, 0], (94, 18), [])]):
         sid = db.site_create(site, None)
         cid = db.camera_create({"code": "", "site_id": sid, "name": cam, "camera_type": ctype, "rtsp_url": f"rtsp://10.0.114.1{sid}:554/linq_stream_0{sid}",
                                 "rules_vector": vec, "map_pos": {"x": pos[0], "y": pos[1]}, "zones": zones,
-                                "extra": {"workers": [{"id": f"TRK-{sid}1", "label": f"ID #{sid}1 • Сотрудник", "x": 35, "y": 40, "w": 12, "h": 34, "ppeOk": True}]}})
+                                "extra": {"mapDirection": (90, 0, -90)[n],   # куда смотрит камера: обзоры ИИ-карт на плане не пересекаются
+                                          "workers": [{"id": f"TRK-{sid}1", "label": f"ID #{sid}1 • Сотрудник", "x": 35, "y": 40, "w": 12, "h": 34, "ppeOk": True}]}})
         db.camera_update(cid, {"code": f"CAM-{cid:02d}"})
 
 
 seed()
+faulthandler.cancel_dump_traceback_later()
