@@ -7,7 +7,11 @@ import os
 
 import numpy as np
 
+_WIN_FONTS = os.path.join(os.environ.get("WINDIR", r"C:\Windows"), "Fonts")
 _FONT_CANDIDATES = [
+    os.path.join(_WIN_FONTS, "arial.ttf"),
+    os.path.join(_WIN_FONTS, "segoeui.ttf"),
+    os.path.join(_WIN_FONTS, "tahoma.ttf"),
     "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
     "/System/Library/Fonts/Supplemental/Arial.ttf",
     "/Library/Fonts/Arial Unicode.ttf",
