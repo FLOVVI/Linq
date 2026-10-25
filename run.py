@@ -196,6 +196,34 @@ def env_value(name):
     return None
 
 
+def set_env_value(name, value):
+    """Записывает NAME=значение в .env (заменяет строку или добавляет) и сразу в окружение запуска."""
+    f = ROOT / ".env"
+    lines = f.read_text(encoding="utf-8-sig").splitlines() if f.exists() else []
+    for i, line in enumerate(lines):
+        if line.strip().startswith(name + "="):
+            lines[i] = f"{name}={value}"
+            break
+    else:
+        lines.append(f"{name}={value}")
+    f.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    os.environ[name] = value
+
+
+def ensure_login():
+    """Нет LINQ_LOGIN — спрашиваем логин Jupyter и сразу сохраняем в .env (регистр сохраняется)."""
+    if env_value("LINQ_LOGIN"):
+        return
+    try:
+        login = input("Введите LINQ_LOGIN (логин Jupyter хакатона), он сохранится в .env. Enter — пропустить: ").strip()
+    except EOFError:
+        return
+    login = login.split("=", 1)[1].strip() if login.upper().startswith("LINQ_LOGIN=") else login
+    if login:
+        set_env_value("LINQ_LOGIN", login)
+        say(f"LINQ_LOGIN={login} сохранён в .env")
+
+
 def digest(*parts):
     h = hashlib.sha256()
     for p in parts:
@@ -759,6 +787,8 @@ def plan_ai(action, interactive):
         if action == "tpu":
             die(problem)
         return None, None, "НЕ ЗАПУЩЕН: " + problem
+    if interactive and (action == "tpu" or (action == "auto" and amqp_alive(env_value("LINQ_BROKER") or "10.0.114.30"))):
+        ensure_login()   # без логина облачный ускоритель не работает: спрашиваем сразу, а не отправляем править .env руками
     mode, missing = (None, "") if action == "cpu" else accelerator()
     if action == "tpu" and not mode:
         msg = f"ускоритель LinQ недоступен — не хватает: {missing}"
